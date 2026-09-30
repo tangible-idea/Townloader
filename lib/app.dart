@@ -6,6 +6,7 @@ import 'data/hiker_client.dart';
 import 'data/ig_repository.dart';
 import 'data/threads_client.dart';
 import 'services/download_service.dart';
+import 'services/file_saver.dart';
 import 'services/settings_store.dart';
 import 'state/profile_controller.dart';
 import 'state/resolve_controller.dart';
@@ -41,6 +42,7 @@ class _TownloaderAppState extends State<TownloaderApp> {
   void initState() {
     super.initState();
     _settings.load();
+    MediaFileSaver.clearShareCache();
   }
 
   @override

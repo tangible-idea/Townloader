@@ -8,13 +8,24 @@ import '../l10n/strings.dart';
 
 /// 파일이 최종적으로 어디에 저장되었는지.
 class SavedLocation {
-  const SavedLocation({required this.description, this.filePath});
+  const SavedLocation({
+    required this.description,
+    this.filePath,
+    String? sharePath,
+  }) : sharePath = sharePath ?? filePath;
 
   /// 사용자에게 보여줄 위치 설명.
   final String description;
 
   /// 디스크 경로. 사진 앨범에만 넣은 경우 null 이다.
   final String? filePath;
+
+  /// 공유 시트·AirDrop 에 넘길 파일. 보통 [filePath] 와 같고, 사진 앨범에 넣은
+  /// 경우에는 공유용으로 캐시에 남겨 둔 사본이다. 캐시는 OS 가 비울 수 있다.
+  final String? sharePath;
+
+  /// [sharePath] 가 사용자 파일이 아니라 지워도 되는 캐시 사본인지.
+  bool get sharesCachedCopy => sharePath != null && sharePath != filePath;
 }
 
 class SaveException implements Exception {
@@ -107,15 +118,44 @@ class MediaFileSaver {
         await Gal.putImage(tempFile.path, album: albumName);
       }
     } on GalException catch (error) {
+      if (await tempFile.exists()) await tempFile.delete();
       throw SaveException('사진 앱에 저장하지 못했습니다: ${error.type.message}');
-    } finally {
-      // 앨범에 복사된 뒤에는 임시 파일이 필요 없다.
-      if (await tempFile.exists()) {
-        await tempFile.delete();
-      }
     }
 
-    return SavedLocation(description: S.current.savedToAlbum(albumName));
+    // 사진 앱에 들어간 파일은 경로로 다시 꺼낼 수 없으므로, 공유·AirDrop 용으로
+    // 임시 파일을 지우지 않고 캐시에 남겨 둔다.
+    final shareCopy = await _keepForSharing(tempFile, filename);
+    return SavedLocation(
+      description: S.current.savedToAlbum(albumName),
+      sharePath: shareCopy?.path,
+    );
+  }
+
+  static const String _shareCacheName = 'townloader_share';
+
+  /// 받는 쪽에 깔끔한 파일명이 보이도록 원래 이름으로 옮겨 둔다.
+  /// 실패해도 저장 자체는 끝난 것이므로 null 을 돌려주고 넘어간다.
+  static Future<File?> _keepForSharing(File tempFile, String filename) async {
+    try {
+      final dir = Directory('${tempFile.parent.path}/$_shareCacheName');
+      await dir.create(recursive: true);
+      return await tempFile.rename(_uniquePath(dir.path, filename).path);
+    } on FileSystemException {
+      if (await tempFile.exists()) await tempFile.delete();
+      return null;
+    }
+  }
+
+  /// 다운로드 목록은 실행 중에만 유지되므로, 지난 실행의 공유용 사본은 쓸 곳이 없다.
+  /// 앱을 켤 때 한 번 비운다.
+  static Future<void> clearShareCache() async {
+    try {
+      final temp = await getTemporaryDirectory();
+      final dir = Directory('${temp.path}/$_shareCacheName');
+      if (await dir.exists()) await dir.delete(recursive: true);
+    } catch (_) {
+      // 임시 폴더를 못 읽는 플랫폼(테스트 등)에서는 할 일이 없다.
+    }
   }
 
   /// 같은 이름이 있으면 `이름-2.mp4` 처럼 번호를 붙여 덮어쓰기를 막는다.

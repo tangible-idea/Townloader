@@ -1,6 +1,10 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../l10n/strings.dart';
 import '../services/download_service.dart';
@@ -178,11 +182,7 @@ class _DownloadTile extends StatelessWidget {
       case DownloadStatus.failed:
         return Row(
           children: [
-            Icon(
-              Icons.error_outline,
-              size: 15,
-              color: theme.colorScheme.error,
-            ),
+            Icon(Icons.error_outline, size: 15, color: theme.colorScheme.error),
             const SizedBox(width: 5),
             Expanded(
               child: Text(
@@ -217,25 +217,39 @@ class _DownloadTile extends StatelessWidget {
     }
 
     if (item.status == DownloadStatus.completed) {
-      final path = item.savedLocation?.filePath;
-      // 모바일에서 앨범에 넣은 경우에는 복사할 경로가 없다.
-      if (path == null) return const SizedBox(width: 8);
-      return IconButton(
-        tooltip: s.openFolder,
-        icon: const Icon(Icons.folder_open_outlined),
-        onPressed: () async {
-          await Clipboard.setData(ClipboardData(text: path));
-          if (context.mounted) {
-            ScaffoldMessenger.of(context)
-              ..hideCurrentSnackBar()
-              ..showSnackBar(
-                SnackBar(
-                  content: Text(s.isKo ? '경로 복사됨' : 'Path copied'),
-                  behavior: SnackBarBehavior.floating,
-                ),
-              );
-          }
-        },
+      final location = item.savedLocation;
+      final path = location?.filePath;
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (location?.sharePath != null) ...[
+            // iOS 는 AirDrop 을 곧바로 여는 공개 API 가 없어, 다른 기본 항목을 뺀
+            // 공유 시트를 띄워 AirDrop 이 맨 앞에 오게 한다.
+            if (_isIOS)
+              IconButton(
+                tooltip: s.airDrop,
+                icon: const Icon(Icons.wifi_tethering),
+                onPressed: () => _share(context, airDropOnly: true),
+              ),
+            IconButton(
+              tooltip: s.share,
+              icon: const Icon(Icons.ios_share),
+              onPressed: () => _share(context, airDropOnly: false),
+            ),
+          ],
+          // 모바일에서 앨범에 넣은 경우에는 복사할 경로가 없다.
+          if (path != null)
+            IconButton(
+              tooltip: s.openFolder,
+              icon: const Icon(Icons.folder_open_outlined),
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: path));
+                if (context.mounted) {
+                  _toast(context, s.isKo ? '경로 복사됨' : 'Path copied');
+                }
+              },
+            ),
+        ],
       );
     }
 
@@ -244,5 +258,45 @@ class _DownloadTile extends StatelessWidget {
       icon: const Icon(Icons.refresh),
       onPressed: () => downloads.retry(item.id),
     );
+  }
+
+  static bool get _isIOS => !kIsWeb && Platform.isIOS;
+
+  /// AirDrop 만 남기려고 공유 시트에서 빼는 기본 항목들.
+  static final _allButAirDrop = [
+    for (final type in CupertinoActivityType.values)
+      if (type != CupertinoActivityType.airDrop) type,
+  ];
+
+  Future<void> _share(BuildContext context, {required bool airDropOnly}) async {
+    final s = S.of(context);
+    final path = item.savedLocation?.sharePath;
+    // 아이패드·맥은 공유 시트를 띄울 기준 위치가 필요하다.
+    final box = context.findRenderObject() as RenderBox?;
+    final origin = box == null
+        ? null
+        : box.localToGlobal(Offset.zero) & box.size;
+
+    // 캐시에 둔 사본은 저장 공간이 부족하면 OS 가 지울 수 있다.
+    if (path == null || !await File(path).exists()) {
+      if (context.mounted) _toast(context, s.shareUnavailable);
+      return;
+    }
+
+    await SharePlus.instance.share(
+      ShareParams(
+        files: [XFile(path)],
+        sharePositionOrigin: origin,
+        excludedCupertinoActivities: airDropOnly ? _allButAirDrop : null,
+      ),
+    );
+  }
+
+  static void _toast(BuildContext context, String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
+      );
   }
 }

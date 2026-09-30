@@ -212,6 +212,13 @@ class DownloadService extends ChangeNotifier {
 
   /// 끝난 항목만 목록에서 지운다. 진행 중인 것은 남긴다.
   void clearFinished() {
+    for (final item in _items.where((item) => item.status.isFinished)) {
+      // 목록에서 빠지면 공유 버튼도 사라지므로 캐시에 남긴 사본을 함께 지운다.
+      final location = item.savedLocation;
+      if (location != null && location.sharesCachedCopy) {
+        unawaited(_deleteQuietly(File(location.sharePath!)));
+      }
+    }
     _items.removeWhere((item) => item.status.isFinished);
     notifyListeners();
   }

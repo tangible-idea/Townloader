@@ -72,6 +72,11 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
+  # iOS 는 CocoaPods 로 묶여 있다. Flutter 전역 설정에서 Swift Package Manager 가
+  # 켜져 있어도 이 프로젝트는 옮기지 않도록 끈다(옮기다 실패해 빌드가 멈춘다).
+  config:
+    enable-swift-package-manager: false
+
   # Medica 디자인 시스템의 본문 서체. 한글 글리프는 없어 시스템 서체로 폴백된다.
   fonts:
     - family: Urbanist
