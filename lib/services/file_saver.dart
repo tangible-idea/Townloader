@@ -12,6 +12,7 @@ class SavedLocation {
     required this.description,
     this.filePath,
     String? sharePath,
+    this.folderUri,
   }) : sharePath = sharePath ?? filePath;
 
   /// 사용자에게 보여줄 위치 설명.
@@ -23,6 +24,10 @@ class SavedLocation {
   /// 공유 시트·AirDrop 에 넘길 파일. 보통 [filePath] 와 같고, 사진 앨범에 넣은
   /// 경우에는 공유용으로 캐시에 남겨 둔 사본이다. 캐시는 OS 가 비울 수 있다.
   final String? sharePath;
+
+  /// 저장된 곳을 여는 주소. 데스크톱은 폴더, iOS 는 사진 앱이나 파일 앱, Android 는
+  /// 갤러리다. 밖에서 열 수 없는 위치(Android 앱 내부 폴더)면 null 이다.
+  final Uri? folderUri;
 
   /// [sharePath] 가 사용자 파일이 아니라 지워도 되는 캐시 사본인지.
   bool get sharesCachedCopy => sharePath != null && sharePath != filePath;
@@ -81,7 +86,11 @@ class MediaFileSaver {
       await tempFile.copy(target.path);
       await tempFile.delete();
     }
-    return SavedLocation(description: target.path, filePath: target.path);
+    return SavedLocation(
+      description: target.path,
+      filePath: target.path,
+      folderUri: Uri.directory(targetDir.path),
+    );
   }
 
   Future<SavedLocation> _saveOnMobile(
@@ -101,6 +110,11 @@ class MediaFileSaver {
       return SavedLocation(
         description: S.current.appDocuments,
         filePath: target.path,
+        // iOS 는 파일 앱이 이 폴더를 바로 연다. Android 의 앱 내부 폴더는 다른
+        // 앱에서 볼 수 없어 열 곳이 없다.
+        folderUri: Platform.isIOS
+            ? Uri(scheme: 'shareddocuments', path: dir.path)
+            : null,
       );
     }
 
@@ -128,7 +142,18 @@ class MediaFileSaver {
     return SavedLocation(
       description: S.current.savedToAlbum(albumName),
       sharePath: shareCopy?.path,
+      folderUri: _galleryUri(isVideo),
     );
+  }
+
+  /// 사진 앱/갤러리를 여는 주소. iOS 는 특정 앨범으로 바로 갈 수 없어 사진 앱만 연다.
+  static Uri? _galleryUri(bool isVideo) {
+    if (Platform.isIOS) return Uri.parse('photos-redirect://');
+    if (Platform.isAndroid) {
+      final kind = isVideo ? 'video' : 'images';
+      return Uri.parse('content://media/external/$kind/media');
+    }
+    return null;
   }
 
   static const String _shareCacheName = 'townloader_share';

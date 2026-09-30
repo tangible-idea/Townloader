@@ -1,10 +1,10 @@
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../l10n/strings.dart';
 import '../services/download_service.dart';
@@ -217,38 +217,20 @@ class _DownloadTile extends StatelessWidget {
     }
 
     if (item.status == DownloadStatus.completed) {
-      final location = item.savedLocation;
-      final path = location?.filePath;
       return Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (location?.sharePath != null) ...[
-            // iOS 는 AirDrop 을 곧바로 여는 공개 API 가 없어, 다른 기본 항목을 뺀
-            // 공유 시트를 띄워 AirDrop 이 맨 앞에 오게 한다.
-            if (_isIOS)
-              IconButton(
-                tooltip: s.airDrop,
-                icon: const Icon(Icons.wifi_tethering),
-                onPressed: () => _share(context, airDropOnly: true),
-              ),
+          if (item.savedLocation?.sharePath != null)
             IconButton(
               tooltip: s.share,
               icon: const Icon(Icons.ios_share),
-              onPressed: () => _share(context, airDropOnly: false),
+              onPressed: () => _share(context),
             ),
-          ],
-          // 모바일에서 앨범에 넣은 경우에는 복사할 경로가 없다.
-          if (path != null)
-            IconButton(
-              tooltip: s.openFolder,
-              icon: const Icon(Icons.folder_open_outlined),
-              onPressed: () async {
-                await Clipboard.setData(ClipboardData(text: path));
-                if (context.mounted) {
-                  _toast(context, s.isKo ? '경로 복사됨' : 'Path copied');
-                }
-              },
-            ),
+          IconButton(
+            tooltip: s.openFolder,
+            icon: const Icon(Icons.folder_open_outlined),
+            onPressed: () => _openFolder(context),
+          ),
         ],
       );
     }
@@ -260,15 +242,33 @@ class _DownloadTile extends StatelessWidget {
     );
   }
 
-  static bool get _isIOS => !kIsWeb && Platform.isIOS;
+  /// 저장된 곳을 연다. 데스크톱은 폴더, 모바일은 사진 앱·갤러리나 파일 앱이다.
+  Future<void> _openFolder(BuildContext context) async {
+    final s = S.of(context);
+    final location = item.savedLocation;
+    final uri = location?.folderUri;
 
-  /// AirDrop 만 남기려고 공유 시트에서 빼는 기본 항목들.
-  static final _allButAirDrop = [
-    for (final type in CupertinoActivityType.values)
-      if (type != CupertinoActivityType.airDrop) type,
-  ];
+    var opened = false;
+    if (uri != null) {
+      try {
+        opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } catch (_) {
+        // 열 수 있는 앱이 없는 기기. 아래에서 경로나 위치를 대신 알려 준다.
+      }
+    }
+    if (opened || !context.mounted) return;
 
-  Future<void> _share(BuildContext context, {required bool airDropOnly}) async {
+    // 열지 못했으면 찾아갈 수 있게 경로를 복사해 주거나, 어디에 있는지 알려 준다.
+    final path = location?.filePath;
+    if (path != null) {
+      await Clipboard.setData(ClipboardData(text: path));
+      if (context.mounted) _toast(context, s.pathCopied);
+    } else {
+      _toast(context, location?.description ?? s.openFolderFailed);
+    }
+  }
+
+  Future<void> _share(BuildContext context) async {
     final s = S.of(context);
     final path = item.savedLocation?.sharePath;
     // 아이패드·맥은 공유 시트를 띄울 기준 위치가 필요하다.
@@ -284,11 +284,7 @@ class _DownloadTile extends StatelessWidget {
     }
 
     await SharePlus.instance.share(
-      ShareParams(
-        files: [XFile(path)],
-        sharePositionOrigin: origin,
-        excludedCupertinoActivities: airDropOnly ? _allButAirDrop : null,
-      ),
+      ShareParams(files: [XFile(path)], sharePositionOrigin: origin),
     );
   }
 

@@ -93,10 +93,12 @@ class S {
       isKo ? '사진 앱 · $album 앨범' : 'Photos · $album album';
   String get appDocuments => isKo ? '앱 문서 폴더' : 'App documents';
   String get share => isKo ? '공유' : 'Share';
-  String get airDrop => 'AirDrop';
   String get shareUnavailable => isKo
       ? '파일이 남아 있지 않습니다. 다시 받아 주세요.'
       : 'The file is no longer available. Download it again.';
+  String get pathCopied => isKo ? '경로 복사됨' : 'Path copied';
+  String get openFolderFailed =>
+      isKo ? '저장 위치를 열 수 없습니다.' : "Couldn't open the saved location.";
   String get openFolder => isKo ? '폴더 열기' : 'Open folder';
 
   // ── Settings ──
