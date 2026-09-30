@@ -180,7 +180,7 @@ class ThreadsClient {
     String? fallbackUsername,
   }) {
     final document = html_parser.parse(html);
-    final outer = document.querySelector('.OuterContainer');
+    final outer = _targetContainer(document);
     if (outer == null) return null;
 
     final username =
@@ -249,6 +249,29 @@ class ThreadsClient {
     );
   }
 
+  /// 주소가 가리키는 게시물의 컨테이너를 고른다.
+  ///
+  /// 댓글(답글)의 embed 에는 부모 글이 위에, 댓글이 아래에 함께 그려진다. 부모는
+  /// `BodyContainerParent` 를 품고, 주소가 가리키는 글은 `OuterContainerFull` 이다.
+  /// 첫 컨테이너를 그대로 쓰면 댓글을 공유했는데 본문의 미디어를 받게 된다.
+  static Element? _targetContainer(Document document) {
+    // 인용 게시물은 다른 글 안에 중첩되어 있으므로 최상위 컨테이너만 후보로 본다.
+    final containers = document
+        .querySelectorAll('.OuterContainer')
+        .where((element) => _closestOuterContainer(element.parent) == null)
+        .toList();
+    if (containers.isEmpty) return null;
+
+    for (final container in containers) {
+      if (container.classes.contains('OuterContainerFull')) return container;
+    }
+    // 표시 클래스가 바뀌더라도 부모 글만은 피한다. 주소의 글은 항상 맨 아래에 온다.
+    return containers.lastWhere(
+      (container) => container.querySelector('.BodyContainerParent') == null,
+      orElse: () => containers.last,
+    );
+  }
+
   static String? _nonEmpty(String? value) {
     final text = value?.trim();
     return text == null || text.isEmpty ? null : text;
@@ -260,7 +283,7 @@ class ThreadsClient {
     return uri != null && (uri.scheme == 'https' || uri.scheme == 'http');
   }
 
-  static Element? _closestOuterContainer(Element element) {
+  static Element? _closestOuterContainer(Element? element) {
     Element? current = element;
     while (current != null) {
       if (current.classes.contains('OuterContainer')) return current;

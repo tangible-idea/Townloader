@@ -170,4 +170,78 @@ void main() {
       expect(ThreadsClient.parseEmbed(html, code: 'TextOnly01'), isNull);
     });
   });
+  group('댓글(답글) embed', () {
+    // 실제 embed 구조: 부모 글이 위(BodyContainerParent), 주소의 글이 아래(OuterContainerFull).
+    String replyEmbed({
+      required String parentMedia,
+      required String replyMedia,
+    }) =>
+        '''
+        <div class="EmbedContainer">
+          <div class="OuterContainer OuterContainerFollowButton">
+            <a class="HeaderLink"><span>parent_author</span></a>
+            <div class="BodyContainerParent BodyContainer">
+              <div class="BodyTextContainer">본문 글</div>
+              $parentMedia
+            </div>
+          </div>
+          <div class="OuterContainer OuterContainerFull OuterContainerFollowButton">
+            <a class="HeaderLink"><span>reply_author</span></a>
+            <div class="BodyContainerNoThreadLine">
+              <div class="BodyTextContainer">댓글</div>
+              $replyMedia
+            </div>
+          </div>
+        </div>
+      ''';
+
+    const parentVideo = '''
+      <div class="SoloMediaContainer">
+        <video><source src="https://cdn.example/parent.mp4"></video>
+      </div>''';
+    const replyPhoto = '''
+      <div class="SoloMediaContainer">
+        <img src="https://cdn.example/reply.jpg" width="1080" height="1350">
+      </div>''';
+
+    test('본문이 아니라 댓글의 미디어를 가져온다', () {
+      final post = ThreadsClient.parseEmbed(
+        replyEmbed(parentMedia: parentVideo, replyMedia: replyPhoto),
+        code: 'REPLY1',
+      );
+
+      expect(post, isNotNull);
+      expect(post!.authorName, 'reply_author');
+      expect(post.caption, '댓글');
+      expect(post.items.single.best?.url, 'https://cdn.example/reply.jpg');
+    });
+
+    test('본문에는 미디어가 없고 댓글에만 있어도 가져온다', () {
+      final post = ThreadsClient.parseEmbed(
+        replyEmbed(parentMedia: '', replyMedia: replyPhoto),
+        code: 'REPLY2',
+      );
+
+      expect(post!.items.single.best?.url, 'https://cdn.example/reply.jpg');
+    });
+
+    test('댓글에 미디어가 없으면 본문 미디어로 대신하지 않는다', () {
+      final post = ThreadsClient.parseEmbed(
+        replyEmbed(parentMedia: parentVideo, replyMedia: ''),
+        code: 'REPLY3',
+      );
+
+      expect(post, isNull);
+    });
+
+    test('OuterContainerFull 표시가 없어도 부모 글은 피한다', () {
+      final html = replyEmbed(
+        parentMedia: parentVideo,
+        replyMedia: replyPhoto,
+      ).replaceAll(' OuterContainerFull', '');
+      final post = ThreadsClient.parseEmbed(html, code: 'REPLY4');
+
+      expect(post!.items.single.best?.url, 'https://cdn.example/reply.jpg');
+    });
+  });
 }
