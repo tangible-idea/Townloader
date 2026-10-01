@@ -24,14 +24,16 @@ class _PeekOnLongPressState extends State<PeekOnLongPress> {
 
   OverlayEntry? _entry;
 
-  void _open() {
+  void _open(Offset pressedAt) {
     if (_entry != null) return;
     HapticFeedback.mediumImpact();
-    _entry = OverlayEntry(builder: (_) => _PeekOverlay(post: widget.post));
+    _entry = OverlayEntry(
+      builder: (_) => _PeekOverlay(post: widget.post, pressedAt: pressedAt),
+    );
     Overlay.of(context, rootOverlay: true).insert(_entry!);
   }
 
-  void _onStart(LongPressStartDetails details) => _open();
+  void _onStart(LongPressStartDetails details) => _open(details.globalPosition);
 
   void _onEnd(LongPressEndDetails details) => _close();
 
@@ -69,9 +71,17 @@ class _PeekOnLongPressState extends State<PeekOnLongPress> {
 }
 
 class _PeekOverlay extends StatelessWidget {
-  const _PeekOverlay({required this.post});
+  const _PeekOverlay({required this.post, required this.pressedAt});
 
   final IgPost post;
+
+  /// 누른 자리. 미리보기가 이 지점에서 커져 나온다.
+  final Offset pressedAt;
+
+  static const _openDuration = Duration(milliseconds: 320);
+
+  /// 처음 크기. 여기서 살짝 넘쳤다가(easeOutBack) 제자리로 돌아온다.
+  static const _startScale = 0.55;
 
   @override
   Widget build(BuildContext context) {
@@ -81,18 +91,33 @@ class _PeekOverlay extends StatelessWidget {
 
     // 손가락이 미리보기 위에 있어도 길게 누르기 제스처가 끊기지 않도록
     // 오버레이는 터치를 받지 않는다.
+    final screen = MediaQuery.sizeOf(context);
+    // 누른 지점을 확대 기준점으로 삼아, 그 글에서 튀어나오는 것처럼 보이게 한다.
+    final origin = Alignment(
+      (pressedAt.dx / screen.width) * 2 - 1,
+      (pressedAt.dy / screen.height) * 2 - 1,
+    );
+
     return IgnorePointer(
       child: TweenAnimationBuilder<double>(
         tween: Tween(begin: 0, end: 1),
-        duration: const Duration(milliseconds: 160),
-        curve: Curves.easeOutCubic,
-        builder: (context, t, child) => Opacity(
-          opacity: t,
-          child: ColoredBox(
-            color: Colors.black.withValues(alpha: 0.55 * t),
-            child: Transform.scale(scale: 0.94 + 0.06 * t, child: child),
-          ),
-        ),
+        duration: _openDuration,
+        builder: (context, t, child) {
+          // 배경과 투명도는 앞쪽에서 빨리, 크기는 끝까지 easeOutBack 으로 튕기듯.
+          final fade = Curves.easeOut.transform((t * 1.8).clamp(0.0, 1.0));
+          final grow = Curves.easeOutBack.transform(t);
+          return ColoredBox(
+            color: Colors.black.withValues(alpha: 0.55 * fade),
+            child: Opacity(
+              opacity: fade,
+              child: Transform.scale(
+                scale: _startScale + (1 - _startScale) * grow,
+                alignment: origin,
+                child: child,
+              ),
+            ),
+          );
+        },
         child: SafeArea(
           child: Center(
             child: Padding(
