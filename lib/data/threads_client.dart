@@ -343,8 +343,15 @@ class ThreadsClient {
       final carousel = media['carousel_media'];
       return {
         ...media,
-        if (versions is List && versions.length > 1)
-          'video_versions': [versions.first],
+        // 후보에는 해상도가 없어 미리보기가 크기를 몰라 들썩인다. 원본 크기를 붙인다.
+        if (versions is List && versions.isNotEmpty && versions.first is Map)
+          'video_versions': [
+            {
+              'width': media['original_width'],
+              'height': media['original_height'],
+              ...versions.first as Map<String, dynamic>,
+            },
+          ],
         if (carousel is List)
           'carousel_media': [
             for (final child in carousel)

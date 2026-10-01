@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
@@ -19,6 +20,8 @@ class PeekOnLongPress extends StatefulWidget {
 }
 
 class _PeekOnLongPressState extends State<PeekOnLongPress> {
+  static const _holdDuration = Duration(milliseconds: 250);
+
   OverlayEntry? _entry;
 
   void _open() {
@@ -27,6 +30,10 @@ class _PeekOnLongPressState extends State<PeekOnLongPress> {
     _entry = OverlayEntry(builder: (_) => _PeekOverlay(post: widget.post));
     Overlay.of(context, rootOverlay: true).insert(_entry!);
   }
+
+  void _onStart(LongPressStartDetails details) => _open();
+
+  void _onEnd(LongPressEndDetails details) => _close();
 
   void _close() {
     _entry?.remove();
@@ -41,11 +48,21 @@ class _PeekOnLongPressState extends State<PeekOnLongPress> {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    // 기본(500ms)보다 짧게 눌러도 열리도록 인식기를 직접 둔다.
+    return RawGestureDetector(
       behavior: HitTestBehavior.opaque,
-      onLongPressStart: (_) => _open(),
-      onLongPressEnd: (_) => _close(),
-      onLongPressCancel: _close,
+      gestures: {
+        LongPressGestureRecognizer:
+            GestureRecognizerFactoryWithHandlers<LongPressGestureRecognizer>(
+              () => LongPressGestureRecognizer(duration: _holdDuration),
+              (recognizer) {
+                recognizer
+                  ..onLongPressStart = _onStart
+                  ..onLongPressEnd = _onEnd
+                  ..onLongPressCancel = _close;
+              },
+            ),
+      },
       child: widget.child,
     );
   }
@@ -169,36 +186,41 @@ class _PeekMediaState extends State<_PeekMedia> {
 
     final width = best?.width;
     final height = best?.height;
-    final ratio = width != null && height != null && width > 0 && height > 0
-        ? width / height
-        : (item.isVideo ? 9 / 16 : 1.0);
+    final knowsSize =
+        width != null && height != null && width > 0 && height > 0;
 
-    return AspectRatio(
-      aspectRatio: ratio,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          NetworkThumb(
-            // 사진은 원본, 동영상은 준비될 때까지 썸네일.
-            url: item.isVideo
-                ? item.thumbnailUrl
-                : (best?.url ?? item.thumbnailUrl),
-            fit: BoxFit.contain,
-            icon: item.isVideo ? Icons.movie_outlined : Icons.image_outlined,
-          ),
-          if (video != null)
-            const Center(
-              child: SizedBox(
-                width: 28,
-                height: 28,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2.5,
-                  color: Colors.white,
-                ),
+    final placeholder = Stack(
+      fit: StackFit.expand,
+      children: [
+        NetworkThumb(
+          // 사진은 원본, 동영상은 준비될 때까지 썸네일.
+          url: item.isVideo
+              ? item.thumbnailUrl
+              : (best?.url ?? item.thumbnailUrl),
+          fit: BoxFit.contain,
+          icon: item.isVideo ? Icons.movie_outlined : Icons.image_outlined,
+        ),
+        if (video != null)
+          const Center(
+            child: SizedBox(
+              width: 28,
+              height: 28,
+              child: CircularProgressIndicator(
+                strokeWidth: 2.5,
+                color: Colors.white,
               ),
             ),
-        ],
-      ),
+          ),
+      ],
     );
+
+    // 크기를 알면 재생될 때와 같은 비율로 자리를 잡아 화면이 들썩이지 않는다.
+    // 모르면 크게 잡았다가 줄어들지 않도록 작은 자리만 차지한다.
+    if (knowsSize) {
+      return AspectRatio(aspectRatio: width / height, child: placeholder);
+    }
+    return SizedBox(height: _unknownSizeHeight, child: placeholder);
   }
+
+  static const _unknownSizeHeight = 180.0;
 }

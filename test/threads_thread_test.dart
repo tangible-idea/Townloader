@@ -1,6 +1,5 @@
 import 'dart:convert';
 
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -28,6 +27,8 @@ String _page({bool moreReplies = true}) {
     'user': {'pk': '1$user', 'username': user},
     'caption': {'text': text},
     'taken_at': 1789772422,
+    'original_width': 1600,
+    'original_height': 900,
     'image_versions2': {
       'candidates': [
         if (photo != null) ...[
@@ -166,6 +167,8 @@ void main() {
 
       expect(self1.best?.url, 'https://cdn/self1-hd.mp4');
       expect(self1.variants, hasLength(1));
+      // 후보에는 해상도가 없어 원본 크기를 붙인다. 미리보기가 이 비율로 자리를 잡는다.
+      expect((self1.best?.width, self1.best?.height), (1600, 900));
       expect(reply1.best?.url, 'https://cdn/reply1.jpg');
     });
 
@@ -258,7 +261,8 @@ void main() {
     expect(row, findsOneWidget);
 
     final gesture = await tester.startGesture(tester.getCenter(row));
-    await tester.pump(kLongPressTimeout + const Duration(milliseconds: 50));
+    // 기본(500ms)보다 짧은 300ms 만에 열린다.
+    await tester.pump(const Duration(milliseconds: 300));
     await tester.pump(const Duration(milliseconds: 200));
     expect(find.text('댓글 사진'), findsNWidgets(2));
 
