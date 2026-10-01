@@ -56,16 +56,14 @@ class S {
   String get threadRoot => isKo ? '본문' : 'Post';
   String get threadContinuation => isKo ? '이어지는 글' : 'Thread';
   String get threadReply => isKo ? '댓글' : 'Reply';
-  String threadSummary(int posts, int replies) => isKo
-      ? '작성자 글 $posts개 · 댓글 $replies개'
-      : '$posts posts by the author · $replies replies';
   String downloadMainMedia(int files) =>
-      isKo ? '본문 미디어만 ($files)' : 'Main post media ($files)';
+      isKo ? '본문만 ($files)' : 'This post ($files)';
   String downloadAllMedia(int files) =>
-      isKo ? '댓글까지 전체 ($files)' : 'Everything ($files)';
-  String get mainMediaHint => isKo
-      ? '본문은 링크한 글과 작성자가 이어서 단 글입니다.'
-      : 'The main post is the linked post plus the author\'s follow-ups.';
+      isKo ? '전체 ($files)' : 'Everything ($files)';
+  String authorThreadSection(int count) =>
+      isKo ? '작성자 스레드 $count' : 'Author thread · $count';
+  String repliesSection(int count) =>
+      isKo ? '댓글 $count' : 'Replies · $count';
   String get noThreadMedia =>
       isKo ? '이 스레드에는 받을 미디어가 없습니다.' : 'No media in this thread.';
   String get moreRepliesHidden => isKo

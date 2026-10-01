@@ -143,13 +143,14 @@ void main() {
       expect(thread.hasMoreReplies, isTrue);
     });
 
-    test('본문 미디어는 작성자 글만, 전체는 댓글 미디어까지 고른다', () {
+    test('본문 미디어는 링크한 글만, 전체는 이어지는 글·댓글 미디어까지 고른다', () {
       final thread = ThreadsClient.parseThreadPage(
         _page(),
         code: 'DdRootPost1',
       )!;
 
-      expect(thread.mainPosts.map((post) => post.code), ['SELF1']);
+      // 링크한 글에는 미디어가 없다.
+      expect(thread.mainPosts, isEmpty);
       expect(thread.allPosts.map((post) => post.code), ['SELF1', 'REPLY1']);
       expect(ThreadsThread.fileCount(thread.allPosts), 2);
     });
@@ -204,7 +205,7 @@ void main() {
     client.close();
   });
 
-  testWidgets('트리와 두 가지 받기 버튼을 보여 주고 고른 범위를 넘긴다', (tester) async {
+  testWidgets('작성자 스레드·댓글 구역과 두 가지 받기 버튼을 보여 주고 고른 범위를 넘긴다', (tester) async {
     final thread = ThreadsClient.parseThreadPage(_page(), code: 'DdRootPost1')!;
     List<IgPost>? picked;
 
@@ -228,10 +229,14 @@ void main() {
     expect(find.text('@friend'), findsOneWidget);
     expect(find.text('댓글은 앞부분만 불러옵니다.'), findsOneWidget);
 
-    await tester.tap(find.text('본문 미디어만 (1)'));
-    expect(picked?.map((post) => post.code), ['SELF1']);
+    expect(find.text('작성자 스레드 3'), findsOneWidget);
+    expect(find.text('댓글 3'), findsOneWidget);
 
-    await tester.tap(find.text('댓글까지 전체 (2)'));
+    // 링크한 글에 미디어가 없으면 본문만 받기는 꺼져 있다.
+    await tester.tap(find.text('본문만 (0)'));
+    expect(picked, isNull);
+
+    await tester.tap(find.text('전체 (2)'));
     expect(picked?.map((post) => post.code), ['SELF1', 'REPLY1']);
   });
 }

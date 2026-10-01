@@ -25,8 +25,8 @@ class ThreadNode {
   /// 들여쓰기 단계. 본문과 이어지는 글은 0, 댓글은 1, 댓글의 답글은 2.
   final int depth;
 
-  /// 본문(작성자의 글)인지. 본문 미디어만 받을 때 이 글들만 고른다.
-  bool get isMain => role != ThreadRole.reply;
+  /// 작성자의 글(본문 또는 이어지는 글)인지.
+  bool get isByAuthor => role != ThreadRole.reply;
 }
 
 /// Threads 게시물 하나와 그 아래 이어지는 글·댓글을 화면 순서대로 담는다.
@@ -45,10 +45,9 @@ class ThreadsThread {
   /// 이어지는 글도 댓글도 없는 단독 게시물인지.
   bool get isSinglePost => nodes.length == 1;
 
-  /// 본문(링크의 글 + 작성자가 이어서 단 글) 중 미디어가 있는 것.
+  /// 링크가 가리키는 글. 미디어가 없으면 빈 목록이다.
   List<IgPost> get mainPosts => [
-    for (final node in nodes)
-      if (node.isMain && node.post.hasDownloadableAssets) node.post,
+    if (root.hasDownloadableAssets) root,
   ];
 
   /// 댓글까지 포함해 미디어가 있는 모든 글.
@@ -56,6 +55,8 @@ class ThreadsThread {
     for (final node in nodes)
       if (node.post.hasDownloadableAssets) node.post,
   ];
+
+  int get authorPostCount => nodes.where((node) => node.isByAuthor).length;
 
   int get replyCount =>
       nodes.where((node) => node.role == ThreadRole.reply).length;
