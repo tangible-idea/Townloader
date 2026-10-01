@@ -4,6 +4,7 @@ import '../../l10n/strings.dart';
 import '../../models/ig_post.dart';
 import '../../models/threads_thread.dart';
 import 'network_thumb.dart';
+import 'peek_preview.dart';
 
 /// Threads 스레드를 한눈에 훑어볼 수 있게 촘촘한 목록으로 보여 주고,
 /// 링크한 글의 미디어만 받을지 이어지는 글·댓글까지 전부 받을지 고르게 한다.
@@ -200,6 +201,22 @@ class _ThreadRow extends StatelessWidget {
       );
     }
 
+    // 길게 누르는 동안 미디어를 크게 띄운다(동영상은 바로 재생).
+    return PeekOnLongPress(
+      post: post,
+      child: _row(context, theme, s, post, isReply, caption, leading),
+    );
+  }
+
+  Widget _row(
+    BuildContext context,
+    ThemeData theme,
+    S s,
+    IgPost post,
+    bool isReply,
+    String? caption,
+    Widget leading,
+  ) {
     return Padding(
       // 댓글의 답글은 한 단계 들여쓴다.
       padding: EdgeInsets.fromLTRB(node.depth > 1 ? 36 : 12, 10, 4, 10),

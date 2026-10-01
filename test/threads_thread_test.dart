@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -238,5 +239,31 @@ void main() {
 
     await tester.tap(find.text('전체 (2)'));
     expect(picked?.map((post) => post.code), ['SELF1', 'REPLY1']);
+  });
+  testWidgets('글을 길게 누르는 동안만 미리보기가 뜨고, 손을 떼면 닫힌다', (tester) async {
+    final thread = ThreadsClient.parseThreadPage(_page(), code: 'DdRootPost1')!;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: ThreadTree(thread: thread, onDownload: (_) {}),
+          ),
+        ),
+      ),
+    );
+
+    // 사진이 달린 댓글. 목록과 미리보기에 같은 문구가 보이므로 개수로 확인한다.
+    final row = find.text('댓글 사진');
+    expect(row, findsOneWidget);
+
+    final gesture = await tester.startGesture(tester.getCenter(row));
+    await tester.pump(kLongPressTimeout + const Duration(milliseconds: 50));
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.text('댓글 사진'), findsNWidgets(2));
+
+    await gesture.up();
+    await tester.pump();
+    expect(find.text('댓글 사진'), findsOneWidget);
   });
 }
