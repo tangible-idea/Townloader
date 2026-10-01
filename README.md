@@ -47,10 +47,18 @@ cp .env.json.example .env.json     # .env.json 은 gitignore 되어 있습니다
 ```bash
 make run                 # 연결된 기기로 실행
 make run DEVICE=macos    # 기기 지정 (ID 는 make devices)
-make ios                 # 또는 make macos
+make ios                 # 연결된 iPhone/iPad 실기기에 Release 빌드·설치·실행
+make ios DEVICE=<기기ID>  # 실기기가 여러 대일 때 선택 (ID는 make devices)
+make macos               # macOS에서 실행
 make ipa                 # 릴리스 빌드
 make env-check           # 키가 심기는 상태인지 확인
 ```
+
+`make ios`는 시뮬레이터를 제외한 iOS 실기기를 자동으로 선택합니다. 설치 후 앱을
+실행하고 명령이 종료되며, 기기에서 앱 아이콘을 눌러 다시 실행할 수 있습니다.
+연결된 실기기가 없거나 여러 대라면 설치 전에 안내와 함께 중단합니다. iPhone/iPad의
+잠금을 해제하고 컴퓨터 신뢰 및 개발자 모드를 켜 두세요. 디버깅과 핫 리로드가 필요하면
+`make run DEVICE=<기기ID>`를 사용합니다.
 
 VS Code 를 쓴다면 `.vscode/launch.json` 에 실행 구성이 들어 있어 F5 로 바로 뜹니다.
 직접 치고 싶다면 원래 형태도 그대로 유효합니다.

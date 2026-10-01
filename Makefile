@@ -5,7 +5,9 @@
 #
 #   make run                 연결된 기기 중 하나로 실행
 #   make run DEVICE=macos    기기 지정
-#   make ios / make macos    플랫폼 바로 지정
+#   make ios                 실제 iPhone/iPad에 Release 빌드·설치·실행
+#   make ios DEVICE=<ID>     여러 실기기 중 하나 지정
+#   make macos               macOS에서 실행
 #   make devices             기기 목록과 ID 확인
 #   make test / make analyze
 #   make ipa / make apk / make aab   릴리스 빌드
@@ -22,7 +24,7 @@ run:
 	flutter run $(DEFINES) $(DEVICE_ARG)
 
 ios:
-	$(MAKE) run DEVICE=ios
+	python3 scripts/run_ios.py --device "$(DEVICE)" --env-file "$(ENV_FILE)"
 
 macos:
 	$(MAKE) run DEVICE=macos
