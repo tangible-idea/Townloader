@@ -1,6 +1,7 @@
 import '../l10n/strings.dart';
 import '../models/ig_post.dart';
 import '../models/ig_user.dart';
+import '../models/threads_thread.dart';
 import 'hiker_client.dart';
 import 'ig_url.dart';
 import 'media_parser.dart';
@@ -8,12 +9,21 @@ import 'threads_client.dart';
 
 /// 링크 하나를 해석한 결과. 스토리처럼 여러 건이 나오는 경우가 있어 항상 목록이다.
 class ResolveResult {
-  const ResolveResult({required this.title, required this.posts, this.user});
+  const ResolveResult({
+    required this.title,
+    required this.posts,
+    this.user,
+    this.thread,
+  });
 
   /// 결과 화면 상단에 보여줄 한 줄 설명.
   final String title;
   final List<IgPost> posts;
   final IgUser? user;
+
+  /// Threads 게시물에 이어지는 글이나 댓글이 있으면 트리로 담긴다. 이때 [posts] 는
+  /// 본문(작성자 글) 중 미디어가 있는 것들이다.
+  final ThreadsThread? thread;
 
   bool get isEmpty => posts.isEmpty;
 }
@@ -56,6 +66,24 @@ class IgRepository {
   }
 
   Future<ResolveResult> _resolveThreadsPost(IgLink link) async {
+    // 게시물 페이지에서 이어지는 글·댓글까지 읽어 본다. 실패하거나 단독 게시물이면
+    // 검증된 embed 방식으로 한 게시물만 가져온다.
+    ThreadsThread? thread;
+    try {
+      thread = await _threadsClient.fetchThread(link);
+    } catch (_) {
+      thread = null;
+    }
+    if (thread != null && !thread.isSinglePost) {
+      final root = thread.root;
+      return ResolveResult(
+        title: '@${root.authorName} · Threads · ${S.current.threadLabel}',
+        posts: thread.mainPosts,
+        user: root.user,
+        thread: thread,
+      );
+    }
+
     final post = await _threadsClient.fetchPost(link);
     return ResolveResult(
       title:

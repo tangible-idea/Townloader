@@ -50,6 +50,28 @@ class S {
   String get savedBtn => isKo ? '저장됨' : 'Saved';
   String get selectQuality => isKo ? '해상도 선택' : 'Select quality';
   String get stories => isKo ? '스토리' : 'Stories';
+
+  // ── Threads 스레드 ──
+  String get threadLabel => isKo ? '스레드' : 'Thread';
+  String get threadRoot => isKo ? '본문' : 'Post';
+  String get threadContinuation => isKo ? '이어지는 글' : 'Thread';
+  String get threadReply => isKo ? '댓글' : 'Reply';
+  String threadSummary(int posts, int replies) => isKo
+      ? '작성자 글 $posts개 · 댓글 $replies개'
+      : '$posts posts by the author · $replies replies';
+  String downloadMainMedia(int files) =>
+      isKo ? '본문 미디어만 ($files)' : 'Main post media ($files)';
+  String downloadAllMedia(int files) =>
+      isKo ? '댓글까지 전체 ($files)' : 'Everything ($files)';
+  String get mainMediaHint => isKo
+      ? '본문은 링크한 글과 작성자가 이어서 단 글입니다.'
+      : 'The main post is the linked post plus the author\'s follow-ups.';
+  String get noThreadMedia =>
+      isKo ? '이 스레드에는 받을 미디어가 없습니다.' : 'No media in this thread.';
+  String get moreRepliesHidden => isKo
+      ? '댓글은 앞부분만 불러옵니다.'
+      : 'Only the first replies are loaded.';
+  String get downloadThisPost => isKo ? '이 글의 미디어 받기' : 'Download this post';
   String userStories(String username) =>
       isKo ? '@$username 스토리' : "@$username's stories";
   String highlight(String? title) => title == null || title.isEmpty

@@ -2,14 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
-import '../data/ig_repository.dart';
 import '../data/ig_url.dart';
 import '../l10n/strings.dart';
+import '../models/ig_post.dart';
 import '../services/download_service.dart';
 import '../state/resolve_controller.dart';
 import '../state/settings_controller.dart';
 import 'widgets/post_card.dart';
 import 'widgets/state_views.dart';
+import 'widgets/thread_tree.dart';
 
 /// 링크를 붙여넣어 게시물을 받는 기본 화면.
 class HomeScreen extends StatefulWidget {
@@ -196,19 +197,23 @@ class HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                 ),
-                if (result.posts.length > 1)
+                if (result.thread == null && result.posts.length > 1)
                   TextButton.icon(
-                    onPressed: () => _downloadAll(result),
+                    onPressed: () => _downloadPosts(result.posts),
                     icon: const Icon(Icons.download),
                     label: Text(s.downloadAll),
                   ),
               ],
             ),
             const SizedBox(height: 12),
-            for (final post in result.posts) ...[
-              PostCard(post: post),
-              const SizedBox(height: 12),
-            ],
+            // Threads 스레드는 트리로 먼저 보여 주고 받을 범위를 고르게 한다.
+            if (result.thread case final thread?)
+              ThreadTree(thread: thread, onDownload: _downloadPosts)
+            else
+              for (final post in result.posts) ...[
+                PostCard(post: post),
+                const SizedBox(height: 12),
+              ],
           ],
         ),
       ),
@@ -251,16 +256,18 @@ class HomeScreenState extends State<HomeScreen> {
     // 실패하면 오류 화면이 그대로 남아 이유를 보여 준다.
     final result = resolve.result;
     if (!autoDownload || !mounted || result == null) return;
-    _downloadAll(result);
+    // 스레드는 받을 범위를 사용자가 고른 뒤에 받는다.
+    if (result.thread != null) return;
+    _downloadPosts(result.posts);
   }
 
-  void _downloadAll(ResolveResult result) {
+  void _downloadPosts(List<IgPost> posts) {
     // 입력창에 포커스가 남아 있으면 키보드가 목록을 가리므로 먼저 내린다.
     FocusScope.of(context).unfocus();
 
     final settings = context.read<SettingsController>();
     final count = context.read<DownloadService>().enqueueAll(
-      result.posts,
+      posts,
       quality: settings.quality,
     );
     _toast(S.of(context).downloadStarted(count));
