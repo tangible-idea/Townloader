@@ -9,11 +9,16 @@ import 'package:townloader/data/ig_url.dart';
 import 'package:townloader/data/threads_client.dart';
 import 'package:townloader/models/ig_post.dart';
 import 'package:townloader/models/threads_thread.dart';
+import 'package:townloader/ui/widgets/post_card.dart';
 import 'package:townloader/ui/widgets/thread_tree.dart';
 
 /// 실제 게시물 페이지와 같은 구조로 만든 예시. 본체(code 가 있는 객체)와
 /// 스레드·댓글 정보(`<pk>_<작성자 id>` id 만 가진 객체)가 서로 다른 조각에 실린다.
-String _page({bool moreReplies = true}) {
+String _page({
+  bool moreReplies = true,
+  bool selfThread = true,
+  String? rootPhoto,
+}) {
   Map<String, dynamic> post(
     String code,
     String user,
@@ -50,7 +55,9 @@ String _page({bool moreReplies = true}) {
     'require': [
       {
         'result': {
-          'data': {'media': post('DdRootPost1', 'author', '본문 글')},
+          'data': {
+            'media': post('DdRootPost1', 'author', '본문 글', photo: rootPhoto),
+          },
         },
       },
     ],
@@ -61,25 +68,26 @@ String _page({bool moreReplies = true}) {
         'media': {
           'id': '9DdRootPost1_1author',
           'text_post_app_info': {
-            'self_thread': {
-              'posts': {
-                'edges': [
-                  edge(
-                    post(
-                      'SELF1',
-                      'author',
-                      '1/ 동영상',
-                      videos: [
-                        'https://cdn/self1-hd.mp4',
-                        'https://cdn/self1-sd.mp4',
-                      ],
+            if (selfThread)
+              'self_thread': {
+                'posts': {
+                  'edges': [
+                    edge(
+                      post(
+                        'SELF1',
+                        'author',
+                        '1/ 동영상',
+                        videos: [
+                          'https://cdn/self1-hd.mp4',
+                          'https://cdn/self1-sd.mp4',
+                        ],
+                      ),
                     ),
-                  ),
-                  edge(post('SELF2', 'author', '2/ 글만')),
-                ],
-                'page_info': {'has_next_page': false},
+                    edge(post('SELF2', 'author', '2/ 글만')),
+                  ],
+                  'page_info': {'has_next_page': false},
+                },
               },
-            },
             'direct_replies': {
               'edges': [
                 edge({
@@ -291,5 +299,39 @@ void main() {
     await gesture.up();
     await tester.pump();
     expect(find.text('댓글 사진'), findsOneWidget);
+  });
+  testWidgets('작성자 글이 하나뿐이면 카드로 크게 보여 주고, 댓글만 골라 받게 한다', (tester) async {
+    final thread = ThreadsClient.parseThreadPage(
+      _page(selfThread: false, rootPhoto: 'https://cdn/root.jpg'),
+      code: 'DdRootPost1',
+    )!;
+    List<IgPost>? picked;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('ko'),
+        supportedLocales: const [Locale('ko'), Locale('en')],
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: ThreadTree(
+              thread: thread,
+              onDownload: (posts) => picked = posts,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(thread.authorPostCount, 1);
+    expect(find.byType(PostCard), findsOneWidget);
+    expect(find.textContaining('작성자 스레드'), findsNothing);
+    // 본문은 카드의 받기 버튼으로 받으므로 체크 대상은 사진 달린 댓글 하나뿐이다.
+    expect(find.text('1개 중 1개 선택'), findsOneWidget);
+    expect(find.textContaining('본문만'), findsNothing);
+
+    await tester.ensureVisible(find.text('선택 받기 (1)'));
+    await tester.tap(find.text('선택 받기 (1)'));
+    expect(picked?.map((post) => post.code), ['REPLY1']);
   });
 }

@@ -8,6 +8,7 @@ import '../../services/download_service.dart';
 import '../../state/settings_controller.dart';
 import '../format.dart';
 import 'download_options_sheet.dart';
+import 'inline_video.dart';
 import 'network_thumb.dart';
 
 /// 해석된 게시물 하나를 미리보기와 다운로드 버튼으로 보여준다.
@@ -171,37 +172,54 @@ class PostCard extends StatelessWidget {
     }
 
     final item = post.items.first;
-    return AspectRatio(
-      aspectRatio: 4 / 3,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          NetworkThumb(url: item.thumbnailUrl),
-          if (item.isVideo)
-            Center(
-              child: Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.45),
-                  shape: BoxShape.circle,
+    // 원본 비율로 크게 보여 준다. 너무 길거나 넓은 건 화면을 다 차지하지 않게 자른다.
+    final best = item.best;
+    final width = best?.width;
+    final height = best?.height;
+    final ratio = width != null && height != null && width > 0 && height > 0
+        ? (width / height).clamp(
+            item.isVideo ? _tallestVideoRatio : _tallestPhotoRatio,
+            _widestRatio,
+          )
+        : 4 / 3;
+
+    // 넓은 화면에서 세로 영상이 끝없이 길어지지 않도록 화면 높이의 70% 로 막는다.
+    return Center(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height * 0.7,
+        ),
+        child: AspectRatio(
+          aspectRatio: ratio,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              if (item.isVideo)
+                InlineVideo(item: item)
+              else
+                NetworkThumb(url: item.thumbnailUrl ?? best?.url),
+              if (item.isVideo &&
+                  item.durationSeconds != null &&
+                  item.durationSeconds! > 0)
+                Positioned(
+                  right: 8,
+                  bottom: 8,
+                  child: IgnorePointer(
+                    child: _pill(Fmt.duration(item.durationSeconds)),
+                  ),
                 ),
-                child: const Icon(
-                  Icons.play_arrow,
-                  color: Colors.white,
-                  size: 28,
-                ),
-              ),
-            ),
-          if (item.durationSeconds != null && item.durationSeconds! > 0)
-            Positioned(
-              right: 8,
-              bottom: 8,
-              child: _pill(Fmt.duration(item.durationSeconds)),
-            ),
-        ],
+            ],
+          ),
+        ),
       ),
     );
   }
+
+  /// 세로 사진은 4:5, 가로는 1.91:1 까지만 보여 준다(인스타그램 피드와 같다).
+  /// 세로 동영상은 잘리거나 작아지지 않도록 9:16 그대로 크게 보여 준다.
+  static const double _tallestPhotoRatio = 4 / 5;
+  static const double _tallestVideoRatio = 9 / 16;
+  static const double _widestRatio = 1.91;
 
   Widget _stats(BuildContext context) {
     final theme = Theme.of(context);

@@ -5,6 +5,7 @@ import '../../models/ig_post.dart';
 import '../../models/threads_thread.dart';
 import 'network_thumb.dart';
 import 'peek_preview.dart';
+import 'post_card.dart';
 
 /// Threads 스레드를 한눈에 훑어볼 수 있게 촘촘한 목록으로 보여 주고,
 /// 체크한 글들의 미디어를 받게 한다.
@@ -29,9 +30,15 @@ class _ThreadTreeState extends State<ThreadTree> {
 
   ThreadsThread get thread => widget.thread;
 
+  /// 작성자가 이어 단 글이 없으면 본문을 카드로 크게 보여 준다. 카드에 받기 버튼이
+  /// 따로 있으므로 체크 대상에서는 뺀다.
+  bool get _singleAuthorPost => widget.thread.authorPostCount == 1;
+
   Set<ThreadNode> _allSelectable() => {
     for (final node in widget.thread.nodes)
-      if (node.post.hasDownloadableAssets) node,
+      if (node.post.hasDownloadableAssets &&
+          !(_singleAuthorPost && node.role == ThreadRole.root))
+        node,
   };
 
   @override
@@ -71,6 +78,26 @@ class _ThreadTreeState extends State<ThreadTree> {
       onToggle: node.post.hasDownloadableAssets ? () => _toggle(node) : null,
     );
 
+    if (_singleAuthorPost) {
+      // 글이 하나뿐이면 목록 대신 카드로 크게, 동영상도 그 자리에서 재생한다.
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          PostCard(post: thread.root),
+          if (replyNodes.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            if (_allSelectable().isNotEmpty) ...[
+              _choices(context),
+              const SizedBox(height: 16),
+            ],
+            _SectionHeader(label: s.repliesSection(replyNodes.length)),
+            _section([for (final node in replyNodes) row(node)]),
+          ],
+          if (thread.hasMoreReplies) _moreRepliesNote(context),
+        ],
+      );
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -86,19 +113,20 @@ class _ThreadTreeState extends State<ThreadTree> {
           _SectionHeader(label: s.repliesSection(replyNodes.length)),
           _section([for (final node in replyNodes) row(node)]),
         ],
-        if (thread.hasMoreReplies)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(4, 8, 4, 0),
-            child: Text(
-              s.moreRepliesHidden,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
+        if (thread.hasMoreReplies) _moreRepliesNote(context),
       ],
     );
   }
+
+  Widget _moreRepliesNote(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(4, 8, 4, 0),
+    child: Text(
+      S.of(context).moreRepliesHidden,
+      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+      ),
+    ),
+  );
 
   Widget _section(List<Widget> rows) => Card(
     margin: EdgeInsets.zero,
@@ -157,16 +185,18 @@ class _ThreadTreeState extends State<ThreadTree> {
         const SizedBox(height: 8),
         Row(
           children: [
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: mainFiles == 0
-                    ? null
-                    : () => widget.onDownload(main),
-                icon: const Icon(Icons.download_outlined, size: 18),
-                label: Text(s.downloadMainMedia(mainFiles)),
+            if (!_singleAuthorPost) ...[
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: mainFiles == 0
+                      ? null
+                      : () => widget.onDownload(main),
+                  icon: const Icon(Icons.download_outlined, size: 18),
+                  label: Text(s.downloadMainMedia(mainFiles)),
+                ),
               ),
-            ),
-            const SizedBox(width: 8),
+              const SizedBox(width: 8),
+            ],
             Expanded(
               child: FilledButton.icon(
                 onPressed: picked.isEmpty
