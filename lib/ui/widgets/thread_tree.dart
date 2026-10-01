@@ -7,16 +7,51 @@ import 'network_thumb.dart';
 import 'peek_preview.dart';
 
 /// Threads 스레드를 한눈에 훑어볼 수 있게 촘촘한 목록으로 보여 주고,
-/// 링크한 글의 미디어만 받을지 이어지는 글·댓글까지 전부 받을지 고르게 한다.
+/// 체크한 글들의 미디어를 받게 한다.
 ///
 /// 작성자 스레드와 댓글을 구역으로 나누고, 글마다 두 줄과 썸네일 하나만 보여 준다.
-class ThreadTree extends StatelessWidget {
+/// 미디어가 있는 글은 처음에 모두 체크되어 있다.
+class ThreadTree extends StatefulWidget {
   const ThreadTree({super.key, required this.thread, required this.onDownload});
 
   final ThreadsThread thread;
 
   /// 고른 글들의 미디어를 다운로드 큐에 넣는다.
   final void Function(List<IgPost> posts) onDownload;
+
+  @override
+  State<ThreadTree> createState() => _ThreadTreeState();
+}
+
+class _ThreadTreeState extends State<ThreadTree> {
+  /// 체크된 글. 같은 글이 두 번 나오지 않으므로 [ThreadNode] 로 구분한다.
+  late Set<ThreadNode> _selected = _allSelectable();
+
+  ThreadsThread get thread => widget.thread;
+
+  Set<ThreadNode> _allSelectable() => {
+    for (final node in widget.thread.nodes)
+      if (node.post.hasDownloadableAssets) node,
+  };
+
+  @override
+  void didUpdateWidget(ThreadTree oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 다른 링크를 열었으면 선택을 처음 상태로 되돌린다.
+    if (!identical(oldWidget.thread, widget.thread)) {
+      _selected = _allSelectable();
+    }
+  }
+
+  void _toggle(ThreadNode node) => setState(() {
+    if (!_selected.remove(node)) _selected.add(node);
+  });
+
+  /// 화면 순서대로 체크된 글.
+  List<IgPost> get _selectedPosts => [
+    for (final node in thread.nodes)
+      if (_selected.contains(node)) node.post,
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -30,6 +65,12 @@ class ThreadTree extends StatelessWidget {
         if (!node.isByAuthor) node,
     ];
 
+    _ThreadRow row(ThreadNode node) => _ThreadRow(
+      node: node,
+      selected: _selected.contains(node),
+      onToggle: node.post.hasDownloadableAssets ? () => _toggle(node) : null,
+    );
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -39,22 +80,11 @@ class ThreadTree extends StatelessWidget {
           post: thread.root,
           label: s.authorThreadSection(authorNodes.length),
         ),
-        _section([
-          for (final (index, node) in authorNodes.indexed)
-            _ThreadRow(
-              node: node,
-              // 본문은 아이콘, 이어지는 글은 1부터 번호를 붙인다.
-              number: index == 0 ? null : index,
-              onDownload: _downloadOne(node),
-            ),
-        ]),
+        _section([for (final node in authorNodes) row(node)]),
         if (replyNodes.isNotEmpty) ...[
           const SizedBox(height: 16),
           _SectionHeader(label: s.repliesSection(replyNodes.length)),
-          _section([
-            for (final node in replyNodes)
-              _ThreadRow(node: node, onDownload: _downloadOne(node)),
-          ]),
+          _section([for (final node in replyNodes) row(node)]),
         ],
         if (thread.hasMoreReplies)
           Padding(
@@ -69,9 +99,6 @@ class ThreadTree extends StatelessWidget {
       ],
     );
   }
-
-  VoidCallback? _downloadOne(ThreadNode node) =>
-      node.post.hasDownloadableAssets ? () => onDownload([node.post]) : null;
 
   Widget _section(List<Widget> rows) => Card(
     margin: EdgeInsets.zero,
@@ -88,12 +115,9 @@ class ThreadTree extends StatelessWidget {
   Widget _choices(BuildContext context) {
     final s = S.of(context);
     final theme = Theme.of(context);
-    final main = thread.mainPosts;
-    final all = thread.allPosts;
-    final mainFiles = ThreadsThread.fileCount(main);
-    final allFiles = ThreadsThread.fileCount(all);
+    final selectable = _allSelectable();
 
-    if (allFiles == 0) {
+    if (selectable.isEmpty) {
       return Text(
         s.noThreadMedia,
         style: theme.textTheme.bodySmall?.copyWith(
@@ -102,22 +126,57 @@ class ThreadTree extends StatelessWidget {
       );
     }
 
-    return Row(
+    final main = thread.mainPosts;
+    final mainFiles = ThreadsThread.fileCount(main);
+    final picked = _selectedPosts;
+    final pickedFiles = ThreadsThread.fileCount(picked);
+    final allChecked = _selected.length == selectable.length;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Expanded(
-          child: OutlinedButton.icon(
-            onPressed: mainFiles == 0 ? null : () => onDownload(main),
-            icon: const Icon(Icons.download_outlined, size: 18),
-            label: Text(s.downloadMainMedia(mainFiles)),
+        // 전체 선택/해제. 일부만 체크되면 가운데 상태로 보인다.
+        InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: () => setState(() => _selected = allChecked ? {} : selectable),
+          child: Row(
+            children: [
+              Checkbox(
+                tristate: true,
+                value: allChecked ? true : (_selected.isEmpty ? false : null),
+                onChanged: (_) =>
+                    setState(() => _selected = allChecked ? {} : selectable),
+              ),
+              Text(
+                s.selectedPosts(_selected.length, selectable.length),
+                style: theme.textTheme.titleSmall,
+              ),
+            ],
           ),
         ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: FilledButton.icon(
-            onPressed: () => onDownload(all),
-            icon: const Icon(Icons.download, size: 18),
-            label: Text(s.downloadAllMedia(allFiles)),
-          ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: mainFiles == 0
+                    ? null
+                    : () => widget.onDownload(main),
+                icon: const Icon(Icons.download_outlined, size: 18),
+                label: Text(s.downloadMainMedia(mainFiles)),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: FilledButton.icon(
+                onPressed: picked.isEmpty
+                    ? null
+                    : () => widget.onDownload(picked),
+                icon: const Icon(Icons.download, size: 18),
+                label: Text(s.downloadSelected(pickedFiles)),
+              ),
+            ),
+          ],
         ),
       ],
     );
@@ -164,104 +223,100 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
-/// 글 하나를 두 줄로 줄여 보여 주는 행. 오른쪽에 첫 미디어 썸네일과 받기 버튼.
+/// 글 하나를 두 줄로 줄여 보여 주는 행. 왼쪽에 받을지 고르는 체크박스, 오른쪽에
+/// 첫 미디어 썸네일. 행을 눌러도 체크가 바뀐다.
 class _ThreadRow extends StatelessWidget {
-  const _ThreadRow({required this.node, required this.onDownload, this.number});
+  const _ThreadRow({
+    required this.node,
+    required this.selected,
+    required this.onToggle,
+  });
 
   final ThreadNode node;
-  final VoidCallback? onDownload;
+  final bool selected;
 
-  /// 작성자 스레드의 순번. null 이면 본문(또는 댓글)이다.
-  final int? number;
+  /// 미디어가 없는 글은 고를 수 없어 null 이다.
+  final VoidCallback? onToggle;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final s = S.of(context);
     final post = node.post;
     final isReply = node.role == ThreadRole.reply;
     // 두 줄 안에 최대한 담도록 줄바꿈을 공백으로 접는다.
     final caption = post.caption?.replaceAll(RegExp(r'\s*\n\s*'), ' ');
 
     final Widget leading;
-    if (isReply) {
-      leading = _Avatar(post: post, size: 24);
-    } else if (number == null) {
+    if (onToggle != null) {
+      leading = Checkbox(
+        value: selected,
+        onChanged: (_) => onToggle!(),
+        visualDensity: VisualDensity.compact,
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      );
+    } else if (node.role == ThreadRole.root) {
+      // 미디어 없는 본문은 고를 게 없으니 본문 표시만 남긴다.
       leading = Icon(
         Icons.push_pin_outlined,
         size: 18,
-        color: theme.colorScheme.primary,
+        color: theme.colorScheme.onSurfaceVariant,
       );
     } else {
-      leading = Text(
-        '$number',
-        style: theme.textTheme.labelLarge?.copyWith(
-          color: theme.colorScheme.onSurfaceVariant,
-        ),
-      );
+      leading = const SizedBox.shrink();
     }
 
     // 길게 누르는 동안 미디어를 크게 띄운다(동영상은 바로 재생).
     return PeekOnLongPress(
       post: post,
-      child: _row(context, theme, s, post, isReply, caption, leading),
-    );
-  }
-
-  Widget _row(
-    BuildContext context,
-    ThemeData theme,
-    S s,
-    IgPost post,
-    bool isReply,
-    String? caption,
-    Widget leading,
-  ) {
-    return Padding(
-      // 댓글의 답글은 한 단계 들여쓴다.
-      padding: EdgeInsets.fromLTRB(node.depth > 1 ? 36 : 12, 10, 4, 10),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(width: 28, child: Center(child: leading)),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (isReply)
-                  Text(
-                    '@${post.authorName}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.labelMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
+      child: InkWell(
+        onTap: onToggle,
+        child: Padding(
+          // 댓글의 답글은 한 단계 들여쓴다.
+          padding: EdgeInsets.fromLTRB(node.depth > 1 ? 32 : 8, 8, 12, 8),
+          child: Row(
+            children: [
+              SizedBox(width: 36, child: Center(child: leading)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (isReply)
+                      Row(
+                        children: [
+                          _Avatar(post: post, size: 16),
+                          const SizedBox(width: 5),
+                          Flexible(
+                            child: Text(
+                              '@${post.authorName}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.labelMedium?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    Text(
+                      caption ?? '',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurface,
+                        height: 1.35,
+                      ),
                     ),
-                  ),
-                Text(
-                  caption ?? '',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurface,
-                    height: 1.35,
-                  ),
+                  ],
                 ),
+              ),
+              if (post.hasDownloadableAssets) ...[
+                const SizedBox(width: 10),
+                _Thumb(post: post),
               ],
-            ),
+            ],
           ),
-          if (post.hasDownloadableAssets) ...[
-            const SizedBox(width: 10),
-            _Thumb(post: post),
-            IconButton(
-              tooltip: s.downloadThisPost,
-              visualDensity: VisualDensity.compact,
-              icon: const Icon(Icons.download_outlined, size: 20),
-              onPressed: onDownload,
-            ),
-          ] else
-            const SizedBox(width: 12),
-        ],
+        ),
       ),
     );
   }

@@ -240,9 +240,31 @@ void main() {
     await tester.tap(find.text('본문만 (0)'));
     expect(picked, isNull);
 
-    await tester.tap(find.text('전체 (2)'));
+    // 처음엔 미디어가 있는 글이 모두 체크되어 있다.
+    expect(find.text('2개 중 2개 선택'), findsOneWidget);
+    await tester.tap(find.text('선택 받기 (2)'));
     expect(picked?.map((post) => post.code), ['SELF1', 'REPLY1']);
+
+    // 행을 누르면 체크가 풀리고, 받기 버튼의 개수와 대상이 바뀐다.
+    await tester.tap(find.text('댓글 사진'));
+    await tester.pump();
+    expect(find.text('2개 중 1개 선택'), findsOneWidget);
+    await tester.tap(find.text('선택 받기 (1)'));
+    expect(picked?.map((post) => post.code), ['SELF1']);
+
+    // 전체 선택을 누르면 일부 선택 상태에서 모두 체크된다.
+    await tester.tap(find.text('2개 중 1개 선택'));
+    await tester.pump();
+    expect(find.text('2개 중 2개 선택'), findsOneWidget);
+
+    // 한 번 더 누르면 모두 풀리고 받기 버튼이 꺼진다.
+    await tester.tap(find.text('2개 중 2개 선택'));
+    await tester.pump();
+    picked = null;
+    await tester.tap(find.text('선택 받기 (0)'));
+    expect(picked, isNull);
   });
+
   testWidgets('글을 길게 누르는 동안만 미리보기가 뜨고, 손을 떼면 닫힌다', (tester) async {
     final thread = ThreadsClient.parseThreadPage(_page(), code: 'DdRootPost1')!;
 
