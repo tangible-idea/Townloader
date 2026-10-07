@@ -65,6 +65,8 @@ class S {
   String authorThreadSection(int count) =>
       isKo ? '작성자 스레드 $count' : 'Author thread · $count';
   String repliesSection(int count) => isKo ? '댓글 $count' : 'Replies · $count';
+  String get readReplies => isKo ? '댓글 읽어주기' : 'Read aloud';
+  String get stopReading => isKo ? '그만 읽기' : 'Stop';
   String get noThreadMedia =>
       isKo ? '이 스레드에는 받을 미디어가 없습니다.' : 'No media in this thread.';
   String get moreRepliesHidden =>

@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../../config/app_config.dart';
+import '../../data/poe_tts_client.dart';
+
 import '../../l10n/strings.dart';
 import '../../models/ig_post.dart';
 import '../../models/threads_thread.dart';
+import '../../services/comment_reader.dart';
 import 'network_thumb.dart';
 import 'peek_preview.dart';
 import 'post_card.dart';
@@ -13,12 +17,20 @@ import 'post_card.dart';
 /// 작성자 스레드와 댓글을 구역으로 나누고, 글마다 두 줄과 썸네일 하나만 보여 준다.
 /// 미디어가 있는 글은 처음에 모두 체크되어 있다.
 class ThreadTree extends StatefulWidget {
-  const ThreadTree({super.key, required this.thread, required this.onDownload});
+  const ThreadTree({
+    super.key,
+    required this.thread,
+    required this.onDownload,
+    this.commentReader,
+  });
 
   final ThreadsThread thread;
 
   /// 고른 글들의 미디어를 다운로드 큐에 넣는다.
   final void Function(List<IgPost> posts) onDownload;
+
+  /// 댓글 읽어 주기. 없으면 빌드에 Poe 키가 있을 때만 만들어 쓴다(테스트에서 주입).
+  final CommentReader? commentReader;
 
   @override
   State<ThreadTree> createState() => _ThreadTreeState();
@@ -27,6 +39,99 @@ class ThreadTree extends StatefulWidget {
 class _ThreadTreeState extends State<ThreadTree> {
   /// 체크된 글. 같은 글이 두 번 나오지 않으므로 [ThreadNode] 로 구분한다.
   late Set<ThreadNode> _selected = _allSelectable();
+
+  CommentReader? _reader;
+  bool _ownsReader = false;
+  String? _shownError;
+
+  @override
+  void initState() {
+    super.initState();
+    _reader = widget.commentReader;
+    if (_reader == null && AppConfig.hasPoeKey) {
+      _reader = CommentReader(
+        synthesize: PoeTtsClient(apiKey: AppConfig.poeApiKey).synthesize,
+      );
+      _ownsReader = true;
+    }
+    _reader?.addListener(_onReaderChanged);
+  }
+
+  @override
+  void dispose() {
+    _reader?.removeListener(_onReaderChanged);
+    if (_ownsReader) {
+      _reader?.dispose();
+    } else {
+      _reader?.stop();
+    }
+    super.dispose();
+  }
+
+  void _onReaderChanged() {
+    if (!mounted) return;
+    final error = _reader?.error;
+    if (error != null && error != _shownError) {
+      _shownError = error;
+      ScaffoldMessenger.maybeOf(context)
+        ?..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(content: Text(error), behavior: SnackBarBehavior.floating),
+        );
+    }
+    setState(() {});
+  }
+
+  List<ThreadNode> get _replyNodes => [
+    for (final node in widget.thread.nodes)
+      if (!node.isByAuthor) node,
+  ];
+
+  /// 읽어 줄 글. 줄바꿈은 쉼으로 바꾸고 링크는 읽지 않는다.
+  static String _speakable(IgPost post) => (post.caption ?? '')
+      .replaceAll(RegExp(r'https?://\S+'), '')
+      .replaceAll(RegExp(r'\s*\n\s*'), '. ')
+      .trim();
+
+  void _toggleReading() {
+    final reader = _reader;
+    if (reader == null) return;
+    if (reader.isActive) {
+      reader.stop();
+    } else {
+      _shownError = null;
+      reader.start([for (final node in _replyNodes) _speakable(node.post)]);
+    }
+  }
+
+  Widget _repliesHeader(BuildContext context, int count) {
+    final s = S.of(context);
+    final reader = _reader;
+    final header = _SectionHeader(label: s.repliesSection(count));
+    if (reader == null) return header;
+
+    return Row(
+      children: [
+        Expanded(child: header),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: TextButton.icon(
+            onPressed: _toggleReading,
+            icon: reader.isActive
+                ? (reader.isLoading
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.stop_circle_outlined, size: 18))
+                : const Icon(Icons.record_voice_over_outlined, size: 18),
+            label: Text(reader.isActive ? s.stopReading : s.readReplies),
+          ),
+        ),
+      ],
+    );
+  }
 
   ThreadsThread get thread => widget.thread;
 
@@ -72,8 +177,14 @@ class _ThreadTreeState extends State<ThreadTree> {
         if (!node.isByAuthor) node,
     ];
 
+    final readingIndex = _reader?.current;
+    final reading = readingIndex == null || readingIndex >= replyNodes.length
+        ? null
+        : replyNodes[readingIndex];
+
     _ThreadRow row(ThreadNode node) => _ThreadRow(
       node: node,
+      highlighted: identical(node, reading),
       selected: _selected.contains(node),
       onToggle: node.post.hasDownloadableAssets ? () => _toggle(node) : null,
     );
@@ -90,7 +201,7 @@ class _ThreadTreeState extends State<ThreadTree> {
               _choices(context),
               const SizedBox(height: 16),
             ],
-            _SectionHeader(label: s.repliesSection(replyNodes.length)),
+            _repliesHeader(context, replyNodes.length),
             _section([for (final node in replyNodes) row(node)]),
           ],
           if (thread.hasMoreReplies) _moreRepliesNote(context),
@@ -110,7 +221,7 @@ class _ThreadTreeState extends State<ThreadTree> {
         _section([for (final node in authorNodes) row(node)]),
         if (replyNodes.isNotEmpty) ...[
           const SizedBox(height: 16),
-          _SectionHeader(label: s.repliesSection(replyNodes.length)),
+          _repliesHeader(context, replyNodes.length),
           _section([for (final node in replyNodes) row(node)]),
         ],
         if (thread.hasMoreReplies) _moreRepliesNote(context),
@@ -259,11 +370,15 @@ class _ThreadRow extends StatelessWidget {
   const _ThreadRow({
     required this.node,
     required this.selected,
+    this.highlighted = false,
     required this.onToggle,
   });
 
   final ThreadNode node;
   final bool selected;
+
+  /// 지금 소리 내어 읽고 있는 댓글인지.
+  final bool highlighted;
 
   /// 미디어가 없는 글은 고를 수 없어 null 이다.
   final VoidCallback? onToggle;
@@ -298,53 +413,59 @@ class _ThreadRow extends StatelessWidget {
     // 길게 누르는 동안 미디어를 크게 띄운다(동영상은 바로 재생).
     return PeekOnLongPress(
       post: post,
-      child: InkWell(
-        onTap: onToggle,
-        child: Padding(
-          // 댓글의 답글은 한 단계 들여쓴다.
-          padding: EdgeInsets.fromLTRB(node.depth > 1 ? 32 : 8, 8, 12, 8),
-          child: Row(
-            children: [
-              SizedBox(width: 36, child: Center(child: leading)),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (isReply)
-                      Row(
-                        children: [
-                          _Avatar(post: post, size: 16),
-                          const SizedBox(width: 5),
-                          Flexible(
-                            child: Text(
-                              '@${post.authorName}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.labelMedium?.copyWith(
-                                fontWeight: FontWeight.w700,
+      child: Material(
+        // 읽고 있는 댓글은 배경을 칠해 어디를 읽는지 보이게 한다.
+        color: highlighted
+            ? theme.colorScheme.primary.withValues(alpha: 0.08)
+            : Colors.transparent,
+        child: InkWell(
+          onTap: onToggle,
+          child: Padding(
+            // 댓글의 답글은 한 단계 들여쓴다.
+            padding: EdgeInsets.fromLTRB(node.depth > 1 ? 32 : 8, 8, 12, 8),
+            child: Row(
+              children: [
+                SizedBox(width: 36, child: Center(child: leading)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (isReply)
+                        Row(
+                          children: [
+                            _Avatar(post: post, size: 16),
+                            const SizedBox(width: 5),
+                            Flexible(
+                              child: Text(
+                                '@${post.authorName}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.labelMedium?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
                               ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
+                      Text(
+                        caption ?? '',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurface,
+                          height: 1.35,
+                        ),
                       ),
-                    Text(
-                      caption ?? '',
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurface,
-                        height: 1.35,
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-              if (post.hasDownloadableAssets) ...[
-                const SizedBox(width: 10),
-                _Thumb(post: post),
+                if (post.hasDownloadableAssets) ...[
+                  const SizedBox(width: 10),
+                  _Thumb(post: post),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),

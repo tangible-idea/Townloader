@@ -36,6 +36,7 @@ request.
 | HikerAPI (hikerapi.com) | The post code or username from the Instagram link you entered | Look up public post information |
 | Threads (threads.com) | The Threads post address you entered | Look up public post information |
 | Each service's content servers (CDN) | The file address | Download the photo or video |
+| Poe (poe.com), using ElevenLabs voices | The text of the replies you choose to have read aloud | Turn the text into speech (only when you tap "Read aloud") |
 
 This information does not pass through the developer. Each service handles it under its own
 privacy policy.

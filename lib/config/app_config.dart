@@ -16,4 +16,10 @@ class AppConfig {
   static const String hikerApiKey = String.fromEnvironment('HIKER_API_KEY');
 
   static bool get hasBundledHikerKey => hikerApiKey.isNotEmpty;
+
+  /// 댓글을 읽어 줄 때 쓰는 Poe API 키(ElevenLabs 음성). 안 넘기면 읽기 버튼이 숨는다.
+  /// HikerAPI 키와 마찬가지로 배포본에서 꺼낼 수 있으니 공개 배포에는 프록시를 둔다.
+  static const String poeApiKey = String.fromEnvironment('POE_API_KEY');
+
+  static bool get hasPoeKey => poeApiKey.isNotEmpty;
 }

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -9,6 +10,7 @@ import 'package:townloader/data/ig_url.dart';
 import 'package:townloader/data/threads_client.dart';
 import 'package:townloader/models/ig_post.dart';
 import 'package:townloader/models/threads_thread.dart';
+import 'package:townloader/services/comment_reader.dart';
 import 'package:townloader/ui/widgets/post_card.dart';
 import 'package:townloader/ui/widgets/thread_tree.dart';
 
@@ -334,4 +336,73 @@ void main() {
     await tester.tap(find.text('선택 받기 (1)'));
     expect(picked?.map((post) => post.code), ['REPLY1']);
   });
+  testWidgets('댓글 읽어주기를 누르면 댓글을 차례로 읽고, 읽는 댓글을 표시한다', (tester) async {
+    final thread = ThreadsClient.parseThreadPage(_page(), code: 'DdRootPost1')!;
+    final asked = <String>[];
+    final playing = Completer<void>();
+    final reader = CommentReader(
+      synthesize: (text) async {
+        asked.add(text);
+        return Uri.parse('https://audio/x.mp3');
+      },
+      playback: _HoldingPlayback(playing),
+    );
+    addTearDown(reader.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('ko'),
+        supportedLocales: const [Locale('ko'), Locale('en')],
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: ThreadTree(
+              thread: thread,
+              onDownload: (_) {},
+              commentReader: reader,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.ensureVisible(find.text('댓글 읽어주기'));
+    await tester.tap(find.text('댓글 읽어주기'));
+    await tester.pump();
+    await tester.pump();
+
+    // 첫 댓글을 읽고 있고, 버튼은 멈춤으로 바뀐다.
+    expect(asked.first, '댓글 사진');
+    expect(reader.current, 0);
+    expect(find.text('그만 읽기'), findsOneWidget);
+
+    await tester.tap(find.text('그만 읽기'));
+    await tester.pump();
+    expect(reader.isActive, isFalse);
+    expect(find.text('댓글 읽어주기'), findsOneWidget);
+  });
+}
+
+/// 테스트가 끝낼 때까지 재생 중으로 남는 가짜 플레이어.
+class _HoldingPlayback implements AudioPlayback {
+  _HoldingPlayback(this._until);
+
+  final Completer<void> _until;
+
+  var _playing = false;
+
+  @override
+  Future<void> play(Uri url) {
+    _playing = true;
+    return _until.future;
+  }
+
+  @override
+  Future<void> stop() async {
+    // 읽기를 시작할 때 부르는 정리용 stop 은 무시하고, 재생 중일 때만 끝낸다.
+    if (_playing && !_until.isCompleted) _until.complete();
+  }
+
+  @override
+  void dispose() {}
 }
