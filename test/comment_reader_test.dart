@@ -69,6 +69,21 @@ void main() {
       expect(url.toString(), 'https://pfst.cf2.poecdn.net/base/audio/abc.mp3');
     });
 
+    test('실제 Poe 응답(확장자 없는 오디오 주소 하나)을 그대로 쓴다', () {
+      // 2026-10-07 실제 호출 결과와 같은 모양. 주소에 확장자가 없지만 mp3 다.
+      const body =
+          '{"id":"x","object":"chat.completion","model":"ElevenLabs-v2.5-Turbo",'
+          '"choices":[{"index":0,"message":{"role":"assistant","content":'
+          '"https://pfst.cf2.poecdn.net/base/audio/beaab3d9a32ee57d"},'
+          '"finish_reason":"stop"}],'
+          '"usage":{"prompt_tokens":24,"completion_tokens":0,"total_tokens":24}}';
+
+      expect(
+        PoeTtsClient.audioUrlFrom(body).toString(),
+        'https://pfst.cf2.poecdn.net/base/audio/beaab3d9a32ee57d',
+      );
+    });
+
     test('마크다운 링크나 조각 목록으로 와도 주소를 꺼낸다', () {
       String reply(Object content) => jsonEncode({
         'choices': [
