@@ -45,6 +45,42 @@ class S {
   // ── Post Card ──
   String get linkCopied => isKo ? '링크 복사됨' : 'Link copied';
   String get copyLink => isKo ? '링크 복사' : 'Copy link';
+  String get openOriginal => isKo ? '원문 열기' : 'Open original';
+  String get openOriginalFailed =>
+      isKo ? '원문을 열 수 없습니다.' : "Couldn't open the original post.";
+
+  // ── 개인 보관 안내 ──
+  String get personalUseTitle => isKo ? '저장하기 전에' : 'Before you save';
+  String get personalUseBody => isKo
+      ? '저장한 사진과 영상의 저작권은 원래 올린 사람에게 있습니다.\n\n'
+            '개인 보관 용도로만 사용해 주세요. 다른 곳에 다시 올리거나 상업적으로 쓰려면 '
+            '먼저 권리자의 허락을 받아야 합니다.'
+      : 'The photos and videos you save belong to the people who posted them.\n\n'
+            'Keep them for personal use only. Get the rights holder\'s permission '
+            'before posting them elsewhere or using them commercially.';
+  String get personalUseAgree => isKo ? '동의하고 저장' : 'Agree and save';
+
+  // ── 스레드 요약 ──
+  String get summaryTitle => isKo ? 'AI 요약' : 'AI summary';
+  String get summaryShow => isKo ? '요약 보기' : 'Show summary';
+  String get summaryLoading => isKo ? '요약하는 중…' : 'Summarizing…';
+  String get summaryFailed =>
+      isKo ? '요약을 만들지 못했습니다.' : "Couldn't create a summary.";
+  String get summaryRateLimited => isKo
+      ? '오늘 요약할 수 있는 횟수를 다 썼습니다.'
+      : "You've reached today's summary limit.";
+  String get summaryRetry => isKo ? '다시 시도' : 'Try again';
+  String get summaryNote => isKo
+      ? 'AI가 만든 요약이라 틀릴 수 있어요. 원문을 함께 확인하세요.'
+      : 'Made by AI and may be wrong. Check the original posts.';
+  String get aiConsentTitle =>
+      isKo ? 'AI로 요약할까요?' : 'Summarize with AI?';
+  String aiConsentBody(String provider) => isKo
+      ? '요약을 만들기 위해 이 스레드의 공개 글과 댓글 내용이 $provider 로 전송됩니다. '
+            '계정 정보나 사진은 보내지 않습니다.'
+      : "To create the summary, the public posts and replies in this thread are sent to $provider. "
+            'No account information or photos are sent.';
+  String get aiConsentAgree => isKo ? '동의하고 요약' : 'Agree and summarize';
   String itemsCount(int count) => isKo ? '$count개 항목' : '$count items';
   String get downloadBtn => isKo ? '다운로드' : 'Download';
   String get savedBtn => isKo ? '저장됨' : 'Saved';

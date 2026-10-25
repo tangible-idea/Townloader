@@ -21,6 +21,18 @@ class _Store extends SettingsStore {
   Future<bool> readSaveToGallery() async => true;
   @override
   Future<bool> writeSaveToGallery(bool value) async => true;
+
+  @override
+  Future<bool> readPersonalUseAck() async => true;
+
+  @override
+  Future<bool> writePersonalUseAck() async => true;
+
+  @override
+  Future<bool> readAiSummaryConsent() async => false;
+
+  @override
+  Future<bool> writeAiSummaryConsent() async => true;
 }
 
 void main() {

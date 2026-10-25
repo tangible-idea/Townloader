@@ -208,6 +208,18 @@ class _MemoryStore extends SettingsStore {
 
   @override
   Future<bool> writeSaveToGallery(bool value) async => true;
+
+  @override
+  Future<bool> readPersonalUseAck() async => true;
+
+  @override
+  Future<bool> writePersonalUseAck() async => true;
+
+  @override
+  Future<bool> readAiSummaryConsent() async => false;
+
+  @override
+  Future<bool> writeAiSummaryConsent() async => true;
 }
 
 // ── 화면에 채워 넣을 예시 데이터 ──────────────────────────────────────────────

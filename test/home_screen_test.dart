@@ -34,6 +34,18 @@ class _NoKeyStore extends SettingsStore {
 
   @override
   Future<bool> writeSaveToGallery(bool value) async => true;
+
+  @override
+  Future<bool> readPersonalUseAck() async => true;
+
+  @override
+  Future<bool> writePersonalUseAck() async => true;
+
+  @override
+  Future<bool> readAiSummaryConsent() async => false;
+
+  @override
+  Future<bool> writeAiSummaryConsent() async => true;
 }
 
 class _KeyedStore extends _NoKeyStore {

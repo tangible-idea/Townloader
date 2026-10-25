@@ -13,6 +13,8 @@ class SettingsController extends ChangeNotifier {
 
   QualityPreference _quality = QualityPreference.best;
   bool _saveToGallery = true;
+  bool _personalUseAck = false;
+  bool _aiSummaryConsent = false;
   bool _isLoaded = false;
   SettingsBackend _backend = SettingsBackend.keychain;
 
@@ -23,6 +25,12 @@ class SettingsController extends ChangeNotifier {
 
   QualityPreference get quality => _quality;
   bool get saveToGallery => _saveToGallery;
+
+  /// 개인 보관 안내에 동의했는지. 동의 전에는 저장할 때마다 안내를 띄운다.
+  bool get personalUseAcknowledged => _personalUseAck;
+
+  /// 스레드 요약을 위해 글을 AI 서비스로 보내는 데 동의했는지.
+  bool get aiSummaryConsented => _aiSummaryConsent;
 
   /// 저장소에서 값을 읽어오기 전에는 "키 없음" 화면을 띄우지 않기 위한 플래그.
   bool get isLoaded => _isLoaded;
@@ -36,6 +44,8 @@ class SettingsController extends ChangeNotifier {
     _backend = await _store.backend;
     _quality = await _store.readQuality();
     _saveToGallery = await _store.readSaveToGallery();
+    _personalUseAck = await _store.readPersonalUseAck();
+    _aiSummaryConsent = await _store.readAiSummaryConsent();
     _isLoaded = true;
     notifyListeners();
   }
@@ -52,5 +62,19 @@ class SettingsController extends ChangeNotifier {
     _saveToGallery = value;
     notifyListeners();
     await _store.writeSaveToGallery(value);
+  }
+
+  Future<void> acknowledgePersonalUse() async {
+    if (_personalUseAck) return;
+    _personalUseAck = true;
+    notifyListeners();
+    await _store.writePersonalUseAck();
+  }
+
+  Future<void> consentToAiSummary() async {
+    if (_aiSummaryConsent) return;
+    _aiSummaryConsent = true;
+    notifyListeners();
+    await _store.writeAiSummaryConsent();
   }
 }

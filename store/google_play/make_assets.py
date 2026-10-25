@@ -5,7 +5,7 @@
 - icon_512.png            512x512 (iOS 1024 아이콘 축소)
 - <locale>/feature_graphic.png  1024x500
 - <locale>/0N_*.png       1080x1920 (9:16). Play 는 스크린샷을 16:9/9:16 만 받으므로
-                          App Store 원본(1284x2778)을 높이에 맞춰 줄이고 좌우를 가장자리 색으로 늘린다.
+                          App Store 원본(1320x2868)을 높이에 맞춰 줄이고 좌우를 가장자리 색으로 늘린다.
 """
 import glob
 import os

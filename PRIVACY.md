@@ -41,6 +41,14 @@ request.
 This information does not pass through the developer. Each service handles it under its own
 privacy policy.
 
+**AI summaries.** When you agree to AI summaries, the public text of the thread's posts and
+replies (with each author's username) is sent to the developer's summary server on Cloudflare
+Workers, which forwards it to the AI service you chose: Anthropic (Claude) or Poe. No account
+information, photos or videos are sent. The summary server keeps the finished summary for 7 days
+so the same thread isn't summarized again, and keeps a count per IP address for about one day to
+limit daily use. It does not keep the post text itself. Anthropic and Poe handle the text under
+their own privacy policies.
+
 ## 4. Device permissions
 
 - **Photo library access**: used only to create the "Townloader" album in Photos and add

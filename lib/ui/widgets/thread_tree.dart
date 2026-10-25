@@ -8,8 +8,10 @@ import '../../models/ig_post.dart';
 import '../../models/threads_thread.dart';
 import '../../services/comment_reader.dart';
 import 'network_thumb.dart';
+import 'open_original.dart';
 import 'peek_preview.dart';
 import 'post_card.dart';
+import 'thread_summary_card.dart';
 
 /// Threads 스레드를 한눈에 훑어볼 수 있게 촘촘한 목록으로 보여 주고,
 /// 체크한 글들의 미디어를 받게 한다.
@@ -189,22 +191,28 @@ class _ThreadTreeState extends State<ThreadTree> {
       onToggle: node.post.hasDownloadableAssets ? () => _toggle(node) : null,
     );
 
+    // 요약은 글이 있어야 의미가 있고, 프록시가 설정된 빌드에서만 보인다.
+    final summary = AppConfig.hasSummaryProxy && thread.nodes.length > 1
+        ? ThreadSummaryCard(thread: thread)
+        : null;
+
     if (_singleAuthorPost) {
       // 글이 하나뿐이면 목록 대신 카드로 크게, 동영상도 그 자리에서 재생한다.
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (summary != null) ...[summary, const SizedBox(height: 16)],
           PostCard(post: thread.root),
           if (replyNodes.isNotEmpty) ...[
             const SizedBox(height: 16),
-            if (_allSelectable().isNotEmpty) ...[
-              _choices(context),
-              const SizedBox(height: 16),
-            ],
             _repliesHeader(context, replyNodes.length),
             _section([for (final node in replyNodes) row(node)]),
           ],
           if (thread.hasMoreReplies) _moreRepliesNote(context),
+          if (replyNodes.isNotEmpty && _allSelectable().isNotEmpty) ...[
+            const SizedBox(height: 16),
+            _choices(context),
+          ],
         ],
       );
     }
@@ -212,8 +220,7 @@ class _ThreadTreeState extends State<ThreadTree> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _choices(context),
-        const SizedBox(height: 16),
+        if (summary != null) ...[summary, const SizedBox(height: 16)],
         _SectionHeader(
           post: thread.root,
           label: s.authorThreadSection(authorNodes.length),
@@ -225,6 +232,9 @@ class _ThreadTreeState extends State<ThreadTree> {
           _section([for (final node in replyNodes) row(node)]),
         ],
         if (thread.hasMoreReplies) _moreRepliesNote(context),
+        // 글을 다 읽은 뒤에 받을 것을 고르도록 맨 아래에 둔다.
+        const SizedBox(height: 16),
+        _choices(context),
       ],
     );
   }
@@ -358,6 +368,10 @@ class _SectionHeader extends StatelessWidget {
             Text('  ·  ', style: muted),
           ],
           Text(label, style: muted),
+          if (author != null) ...[
+            const Spacer(),
+            OpenOriginalButton(post: author, size: 18),
+          ],
         ],
       ),
     );

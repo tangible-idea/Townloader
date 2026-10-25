@@ -6,6 +6,7 @@ import '../../models/ig_post.dart';
 import '../../services/download_service.dart';
 import '../format.dart';
 import 'network_thumb.dart';
+import 'personal_use_notice.dart';
 
 /// 게시물 항목마다 화질을 직접 골라 받게 해 주는 시트.
 ///
@@ -169,7 +170,8 @@ class _DownloadOptionsSheetState extends State<DownloadOptionsSheet> {
     return parts.isEmpty ? '원본' : parts.join(' · ');
   }
 
-  void _downloadSelected() {
+  Future<void> _downloadSelected() async {
+    if (!await confirmPersonalUse(context) || !mounted) return;
     final downloads = context.read<DownloadService>();
     for (final entry in _selection.entries) {
       downloads.enqueueAsset(

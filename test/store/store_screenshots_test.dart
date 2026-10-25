@@ -17,8 +17,9 @@ import 'package:townloader/l10n/strings.dart';
 import 'package:townloader/models/ig_asset.dart';
 import 'package:townloader/models/ig_post.dart';
 import 'package:townloader/models/ig_user.dart';
+import 'package:townloader/models/media_source.dart';
+import 'package:townloader/models/threads_thread.dart';
 import 'package:townloader/services/download_service.dart';
-import 'package:townloader/services/file_saver.dart';
 import 'package:townloader/services/settings_store.dart';
 import 'package:townloader/state/profile_controller.dart';
 import 'package:townloader/state/resolve_controller.dart';
@@ -27,7 +28,7 @@ import 'package:townloader/ui/profile_screen.dart';
 import 'package:townloader/ui/root_shell.dart';
 import 'package:townloader/ui/theme.dart';
 
-/// App Store 업로드용 스크린샷(6.7" iPhone, 1284×2778)을 만든다.
+/// App Store 업로드용 스크린샷(6.9" iPhone, 1320×2868)을 만든다.
 ///
 /// 실제 앱 화면을 폰 목업에 넣고 위에 문구를 얹는다. 평소 테스트에서는 건너뛴다.
 ///
@@ -44,7 +45,33 @@ void main() {
   });
 
   for (final copy in _copies) {
-    testWidgets('${copy.locale} 01 링크 하나로 저장', (tester) async {
+    testWidgets('${copy.locale} 01 스레드를 한 화면에', (tester) async {
+      final env = await _Env.create(tester, copy.appLocale);
+      await env.pump(
+        _StoreFrame(
+          title: copy.thread.title,
+          subtitle: copy.thread.subtitle,
+          titleSize: copy.titleSize,
+          screen: const RootShell(),
+        ),
+        locale: copy.appLocale,
+      );
+
+      final field = find.descendant(
+        of: find.byType(RootShell),
+        matching: find.byType(TextField),
+      );
+      await tester.enterText(
+        field.first,
+        'threads.com/@${_threadsAuthor.username}/post/DdTrek0001',
+      );
+      await tester.tap(find.byTooltip(copy.strings.fetch));
+      await _settle(tester);
+
+      await _capture(tester, copy.locale, '01_thread.png');
+    }, skip: !enabled);
+
+    testWidgets('${copy.locale} 02 링크 하나로 저장', (tester) async {
       final env = await _Env.create(tester, copy.appLocale);
       await env.pump(
         _StoreFrame(
@@ -64,45 +91,7 @@ void main() {
       await tester.tap(find.byTooltip(copy.strings.fetch));
       await _settle(tester);
 
-      await _capture(tester, copy.locale, '01_link.png');
-    }, skip: !enabled);
-
-    testWidgets('${copy.locale} 02 공유하면 바로 다운로드', (tester) async {
-      final env = await _Env.create(tester, copy.appLocale);
-
-      // 공유로 들어온 링크가 큐에 들어가 한창 받는 중인 모습을 만든다.
-      env.downloads.enqueueAll(_sharedPosts, quality: QualityPreference.best);
-      final items = env.downloads.items;
-      for (var index = 0; index < items.length; index++) {
-        final item = items[index];
-        if (index < 2) {
-          item
-            ..status = DownloadStatus.running
-            ..totalBytes = 10000000
-            ..receivedBytes = index == 0 ? 6400000 : 2300000;
-        } else {
-          item
-            ..status = DownloadStatus.completed
-            ..savedLocation = SavedLocation(
-              description: S.current.savedToAlbum(MediaFileSaver.albumName),
-            );
-        }
-      }
-
-      await env.pump(
-        _StoreFrame(
-          title: copy.share.title,
-          subtitle: copy.share.subtitle,
-          titleSize: copy.titleSize,
-          screen: const RootShell(),
-          badge: _ShareBadge(hint: copy.shareHint),
-        ),
-        locale: copy.appLocale,
-      );
-      await tester.tap(find.text(copy.strings.navDownloads));
-      await _settle(tester);
-
-      await _capture(tester, copy.locale, '02_share.png');
+      await _capture(tester, copy.locale, '02_link.png');
     }, skip: !enabled);
 
     testWidgets('${copy.locale} 03 프로필 통째로 둘러보기', (tester) async {
@@ -130,6 +119,22 @@ void main() {
 
       await _capture(tester, copy.locale, '03_profile.png');
     }, skip: !enabled);
+
+    testWidgets('${copy.locale} 제품 페이지 헤더', (tester) async {
+      final env = await _Env.create(tester, copy.appLocale);
+      tester.view.physicalSize = _headerCanvas * _headerPixelRatio;
+      tester.view.devicePixelRatio = _headerPixelRatio;
+      await env.pump(_HeaderFrame(copy: copy.header), locale: copy.appLocale);
+      await _settle(tester);
+
+      await _capture(
+        tester,
+        copy.locale,
+        'header.png',
+        pixelRatio: _headerPixelRatio,
+        folder: 'store/app_store/header',
+      );
+    }, skip: !enabled);
   }
 }
 
@@ -140,10 +145,10 @@ class _Copy {
   const _Copy({
     required this.locale,
     required this.titleSize,
+    required this.thread,
     required this.link,
-    required this.share,
     required this.profile,
-    required this.shareHint,
+    required this.header,
   });
 
   /// App Store Connect(fastlane) 의 언어 폴더 이름.
@@ -153,50 +158,53 @@ class _Copy {
   Locale get appLocale => Locale(locale.split('-').first);
   S get strings => S(appLocale.languageCode != 'en');
   final double titleSize;
+  final ({String title, String subtitle}) thread;
   final ({String title, String subtitle}) link;
-  final ({String title, String subtitle}) share;
   final ({String title, String subtitle}) profile;
-  final String shareHint;
+  final ({String title, String subtitle}) header;
 }
 
 const _copies = [
   _Copy(
     locale: 'ko',
     titleSize: 38,
-    link: (title: '링크 하나로\n원본 화질 그대로', subtitle: '사진·릴스·캐러셀을 가장 높은 화질로 저장해요'),
-    share: (
-      title: '공유 버튼 한 번이면\n바로 다운로드',
-      subtitle: '인스타그램·Threads 공유 목록에서 Townloader를 고르세요',
-    ),
+    thread: (title: '나뉜 스레드도\n한 화면에서 끝까지', subtitle: '이어지는 글과 댓글을 순서대로 모아 읽어요'),
+    link: (title: '링크 하나로\n바로 열어 보기', subtitle: '사진과 영상을 크게 보고, 원하는 것만 보관해요'),
     profile: (
       title: '계정을 통째로 보고\n원하는 것만 골라서',
       subtitle: '게시물·릴스·스토리를 한눈에 둘러봐요',
     ),
-    shareHint: '공유 목록에서 선택',
+    header: (
+      title: '긴 글도, 사진도, 영상도\n한 화면에서',
+      subtitle: '읽고, 고르고, 원본 그대로 보관하세요',
+    ),
   ),
   _Copy(
     locale: 'en-US',
     titleSize: 34,
-    link: (
-      title: 'One link.\nOriginal quality.',
-      subtitle: 'Save photos, videos and carousels in full resolution',
+    thread: (
+      title: 'Whole threads.\nOne screen.',
+      subtitle: 'Read multi-part posts in order, with replies',
     ),
-    share: (
-      title: 'Share once.\nDownload instantly.',
-      subtitle: 'Pick Townloader in the share sheet',
+    link: (
+      title: 'Paste a link.\nSee it all.',
+      subtitle: 'View photos and videos, keep only what you want',
     ),
     profile: (
       title: 'Browse an account.\nKeep what you like.',
       subtitle: 'See posts, reels and stories at a glance',
     ),
-    shareHint: 'Pick it in the share sheet',
+    header: (
+      title: 'Posts, photos, videos.\nAll on one screen.',
+      subtitle: 'Read, pick, and keep them in original quality',
+    ),
   ),
 ];
 
 // ── 캔버스 ────────────────────────────────────────────────────────────────────
 
-/// App Store Connect 가 받는 6.7" 규격(1284×2778). 논리 크기 428×926 을 3배로 찍는다.
-const _canvas = Size(428, 926);
+/// App Store Connect 가 받는 6.9" 규격(1320×2868). 논리 크기 440×956 을 3배로 찍는다.
+const _canvas = Size(440, 956);
 const _pixelRatio = 3.0;
 
 /// 목업 안 화면은 iPhone 16 Pro 논리 크기.
@@ -273,14 +281,20 @@ Future<void> _settle(WidgetTester tester) async {
   }
 }
 
-Future<void> _capture(WidgetTester tester, String locale, String name) async {
+Future<void> _capture(
+  WidgetTester tester,
+  String locale,
+  String name, {
+  double pixelRatio = _pixelRatio,
+  String folder = 'store/app_store/screenshots',
+}) async {
   await tester.runAsync(() async {
     final boundary = tester.renderObject<RenderRepaintBoundary>(
       find.byKey(_shotKey),
     );
-    final image = await boundary.toImage(pixelRatio: _pixelRatio);
+    final image = await boundary.toImage(pixelRatio: pixelRatio);
     final data = await image.toByteData(format: ui.ImageByteFormat.png);
-    final file = File('store/app_store/screenshots/$locale/$name');
+    final file = File('$folder/$locale/$name');
     await file.parent.create(recursive: true);
     await file.writeAsBytes(data!.buffer.asUint8List());
   });
@@ -294,7 +308,6 @@ class _StoreFrame extends StatelessWidget {
     required this.subtitle,
     required this.screen,
     this.titleSize = 38,
-    this.badge,
   });
 
   final String title;
@@ -302,8 +315,6 @@ class _StoreFrame extends StatelessWidget {
   final String subtitle;
   final Widget screen;
 
-  /// 폰 위에 겹쳐 띄우는 강조 카드.
-  final Widget? badge;
 
   @override
   Widget build(BuildContext context) {
@@ -353,7 +364,6 @@ class _StoreFrame extends StatelessWidget {
                   padding: const EdgeInsets.only(bottom: 40),
                   child: FittedBox(child: _PhoneMockup(screen: screen)),
                 ),
-                if (badge case final badge?) Positioned(top: 486, child: badge),
               ],
             ),
           ),
@@ -394,9 +404,7 @@ class _PhoneMockup extends StatelessWidget {
           size: _screen,
           child: Stack(
             children: [
-              Positioned.fill(
-                child: MediaQuery(data: media, child: screen),
-              ),
+              Positioned.fill(child: MediaQuery(data: media, child: screen)),
               const Positioned(
                 top: 0,
                 left: 0,
@@ -448,61 +456,6 @@ class _StatusBar extends StatelessWidget {
           Icon(Icons.wifi, size: 18, color: Palette.grey900),
           SizedBox(width: 5),
           Icon(Icons.battery_full, size: 20, color: Palette.grey900),
-        ],
-      ),
-    );
-  }
-}
-
-/// 공유 시트에서 Townloader 를 고르는 장면을 암시하는 카드.
-class _ShareBadge extends StatelessWidget {
-  const _ShareBadge({required this.hint});
-
-  final String hint;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(12, 12, 18, 12),
-      decoration: BoxDecoration(
-        color: Palette.white,
-        borderRadius: BorderRadius.circular(22),
-        // 테스트 렌더러는 그림자를 흐리게 그리지 못해 테두리로 띄운다.
-        border: Border.all(color: Palette.grey300),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: Image.network(_img('icon'), width: 48, height: 48),
-          ),
-          const SizedBox(width: 12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Townloader',
-                style: TextStyle(
-                  fontFamily: AppTheme.fontFamily,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: Palette.grey900,
-                ),
-              ),
-              SizedBox(height: 2),
-              Text(
-                hint,
-                style: const TextStyle(
-                  fontFamily: _korean,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                  color: Palette.grey600,
-                ),
-              ),
-            ],
-          ),
         ],
       ),
     );
@@ -577,7 +530,21 @@ class _StoreRepository extends IgRepository {
   _StoreRepository() : super(HikerClient(readApiKey: () => 'store'));
 
   @override
-  Future<ResolveResult> resolve(IgLink link) async => ResolveResult(
+  Future<ResolveResult> resolve(IgLink link) async {
+    if (link.type == IgLinkType.threadsPost) {
+      final thread = _thread;
+      return ResolveResult(
+        title:
+            '@${_threadsAuthor.username} · Threads · ${S.current.threadLabel}',
+        posts: thread.mainPosts,
+        user: _threadsAuthor,
+        thread: thread,
+      );
+    }
+    return _instagramResult;
+  }
+
+  ResolveResult get _instagramResult => ResolveResult(
     title:
         '@${_user.username} · ${_carousel.kind.localizedLabel(S.current.isKo)}',
     posts: [_carousel],
@@ -624,6 +591,16 @@ class _MemoryStore extends SettingsStore {
   Future<bool> readSaveToGallery() async => true;
   @override
   Future<bool> writeSaveToGallery(bool value) async => true;
+  @override
+  Future<bool> readPersonalUseAck() async => true;
+  @override
+  Future<bool> writePersonalUseAck() async => true;
+
+  @override
+  Future<bool> readAiSummaryConsent() async => false;
+
+  @override
+  Future<bool> writeAiSummaryConsent() async => true;
 }
 
 // ── 예시 데이터 (모두 지어낸 계정) ────────────────────────────────────────────
@@ -638,15 +615,6 @@ final _user = IgUser(
   followerCount: 482000,
   followingCount: 312,
   biography: '매일 한 장, 세상의 풍경',
-);
-
-final _friend = IgUser(
-  pk: '5930012',
-  username: 'kim.films',
-  fullName: 'Kim Films',
-  profilePicUrl: _img('avatar2'),
-  mediaCount: 312,
-  followerCount: 28400,
 );
 
 IgItem _photo(String name) => IgItem(
@@ -680,9 +648,10 @@ IgPost get _carousel => IgPost(
   code: 'DchLnq8E21N',
   kind: PostKind.carousel,
   user: _user,
-  caption: S.current.isKo
-      ? '돌로미티 트레킹 3일차. 구름이 걷히는 순간을 다섯 장에 담았어요.'
-      : 'Day 3 in the Dolomites. Five frames of the clouds breaking.',
+  caption:
+      S.current.isKo
+          ? '돌로미티 트레킹 3일차. 구름이 걷히는 순간을 다섯 장에 담았어요.'
+          : 'Day 3 in the Dolomites. Five frames of the clouds breaking.',
   takenAt: DateTime(2026, 9, 14),
   likeCount: 48200,
   commentCount: 612,
@@ -695,39 +664,12 @@ IgPost get _carousel => IgPost(
   ],
 );
 
-List<IgPost> get _sharedPosts => [
-  IgPost(
-    pk: '3974000000000000002',
-    code: 'DcxReel0001',
-    kind: PostKind.reel,
-    user: _friend,
-    caption: '해 질 녘 한강',
-    takenAt: DateTime(2026, 9, 20),
-    items: [_video('p1047', 38)],
-  ),
-  IgPost(
-    pk: '3974000000000000003',
-    code: 'DcxPost0002',
-    kind: PostKind.carousel,
-    user: _user,
-    takenAt: DateTime(2026, 9, 19),
-    items: [_photo('p1015'), _photo('p1050'), _photo('p1057')],
-  ),
-  IgPost(
-    pk: '3974000000000000004',
-    code: 'DcxPost0003',
-    kind: PostKind.photo,
-    user: _user,
-    takenAt: DateTime(2026, 9, 18),
-    items: [_photo('p1080')],
-  ),
-];
-
 final _gridPosts = <IgPost>[
-  for (final (index, name) in [
-    'p1015', 'p1040', 'p1069', 'p1074', 'p1084', 'p110', //
-    'p1062', 'p1057', 'p1050', 'p1047', 'p1039', 'p1080',
-  ].indexed)
+  for (final (index, name)
+      in [
+        'p1015', 'p1040', 'p1069', 'p1074', 'p1084', 'p110', //
+        'p1062', 'p1057', 'p1050', 'p1047', 'p1039', 'p1080',
+      ].indexed)
     IgPost(
       pk: '39750000000000000$index',
       code: 'DcGrid$index',
@@ -737,3 +679,309 @@ final _gridPosts = <IgPost>[
       items: [index % 3 == 1 ? _video(name, 24.0 + index) : _photo(name)],
     ),
 ];
+
+// Threads 스레드 예시. 작성자가 여섯 편으로 나눠 쓴 여행 기록과 댓글.
+
+final _threadsAuthor = IgUser(
+  pk: '6100231',
+  username: 'marks.photo',
+  fullName: "Mark's Photo",
+  profilePicUrl: _img('avatar'),
+  isVerified: true,
+);
+
+final _threadsReplier = IgUser(
+  pk: '6100877',
+  username: 'kim.films',
+  fullName: 'Kim Films',
+  profilePicUrl: _img('avatar2'),
+);
+
+IgPost _threadPost(
+  int index,
+  IgUser user,
+  String caption, {
+  List<IgItem> items = const [],
+}) => IgPost(
+  pk: '39800000000000000$index',
+  code: 'DdTrek000$index',
+  source: MediaSource.threads,
+  kind:
+      items.length > 1
+          ? PostKind.carousel
+          : items.any((item) => item.kind == AssetKind.video)
+          ? PostKind.video
+          : PostKind.photo,
+  user: user,
+  caption: caption,
+  takenAt: DateTime(2026, 9, 21),
+  items: items,
+);
+
+ThreadsThread get _thread {
+  final ko = S.current.isKo;
+  final author = [
+    (
+      ko
+          ? '돌로미티 3일 트레킹 정리 (1/6)\n준비물부터 코스, 숙소까지 순서대로 적어 볼게요.'
+          : 'My 3-day Dolomites trek, all in one thread (1/6)\nGear, route and huts, in order.',
+      [_photo('p1018'), _photo('p1036')],
+    ),
+    (
+      ko
+          ? '(2/6) 첫날은 세체다. 케이블카로 올라가 능선을 따라 걸으면 2시간이면 충분해요.'
+          : '(2/6) Day one: Seceda. Take the cable car up and follow the ridge, about two hours.',
+      [_photo('p1043')],
+    ),
+    (
+      ko
+          ? '(3/6) 산장은 두 달 전에 예약했어요. 7월 주말은 거의 다 찹니다.'
+          : '(3/6) I booked the huts two months ahead. July weekends fill up fast.',
+      <IgItem>[],
+    ),
+    (
+      ko
+          ? '(4/6) 둘째 날 아침, 구름이 걷히는 순간.'
+          : '(4/6) Day two, the moment the clouds broke.',
+      [_video('p1044', 18)],
+    ),
+    (
+      ko
+          ? '(5/6) 트레치메 한 바퀴. 바람이 세니 얇은 패딩은 꼭 챙기세요.'
+          : '(5/6) The Tre Cime loop. It gets windy, so bring a light down jacket.',
+      [_photo('p1039'), _photo('p1015')],
+    ),
+    (
+      ko
+          ? '(6/6) 다음엔 가을에 다시 오고 싶어요. 궁금한 건 댓글로!'
+          : '(6/6) I want to come back in autumn. Ask me anything below!',
+      <IgItem>[],
+    ),
+  ];
+  final replies = [
+    ko
+        ? '정리 감사해요! 산장 예약은 어디서 하셨어요?'
+        : 'Thanks for this! Where did you book the huts?',
+    ko ? '4번 사진 너무 좋네요. 몇 시쯤이었나요?' : 'Love the shot in 4. What time was that?',
+  ];
+
+  return ThreadsThread(
+    nodes: [
+      for (final (index, (caption, items)) in author.indexed)
+        ThreadNode(
+          post: _threadPost(index, _threadsAuthor, caption, items: items),
+          role: index == 0 ? ThreadRole.root : ThreadRole.continuation,
+          depth: 0,
+        ),
+      for (final (index, caption) in replies.indexed)
+        ThreadNode(
+          post: _threadPost(10 + index, _threadsReplier, caption),
+          role: ThreadRole.reply,
+          depth: 1,
+        ),
+    ],
+  );
+}
+
+// ── 제품 페이지 헤더 ──────────────────────────────────────────────────────────
+
+/// App Store 제품 페이지 맨 위 헤더(5244×2950). 논리 크기 2622×1475 를 2배로 찍는다.
+///
+/// Apple 가이드상 다른 플랫폼의 이름·로고·화면은 넣을 수 없어서, 앱 화면 대신
+/// 스레드 목록을 단순화한 카드만 그린다. 기기마다 위아래가 잘리므로 내용은 가운데에 모은다.
+const _headerCanvas = Size(2622, 1475);
+const _headerPixelRatio = 2.0;
+
+class _HeaderFrame extends StatelessWidget {
+  const _HeaderFrame({required this.copy});
+
+  final ({String title, String subtitle}) copy;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Palette.white, Color(0xFFE6E6E6)],
+        ),
+      ),
+      child: Center(
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 1060,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(36),
+                        child: Image.network(
+                          _img('icon'),
+                          width: 160,
+                          height: 160,
+                        ),
+                      ),
+                      const SizedBox(width: 36),
+                      const Text(
+                        'Townloader',
+                        style: TextStyle(
+                          fontFamily: AppTheme.fontFamily,
+                          fontSize: 72,
+                          fontWeight: FontWeight.w700,
+                          color: Palette.grey900,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 64),
+                  Text(
+                    copy.title,
+                    style: const TextStyle(
+                      fontFamily: _korean,
+                      fontSize: 96,
+                      fontWeight: FontWeight.w800,
+                      height: 1.22,
+                      letterSpacing: -2.5,
+                      color: Palette.grey900,
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+                  Text(
+                    copy.subtitle,
+                    style: const TextStyle(
+                      fontFamily: _korean,
+                      fontSize: 42,
+                      fontWeight: FontWeight.w500,
+                      letterSpacing: -0.5,
+                      color: Palette.grey600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 120),
+            const _HeaderThreadCard(),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 스레드 목록을 닮은 카드. 글자는 회색 막대로만 그려 특정 서비스로 읽히지 않게 한다.
+class _HeaderThreadCard extends StatelessWidget {
+  const _HeaderThreadCard();
+
+  static const _rows = [
+    (lines: [1.0, 0.72], thumb: 'p1018', checked: true, video: false),
+    (lines: [0.94, 0.58], thumb: 'p1043', checked: true, video: false),
+    (lines: [0.86, 0.66], thumb: null, checked: false, video: false),
+    (lines: [0.78, 0.0], thumb: 'p1044', checked: true, video: true),
+    (lines: [0.9, 0.62], thumb: 'p1039', checked: true, video: false),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 820,
+      padding: const EdgeInsets.fromLTRB(44, 40, 44, 24),
+      decoration: BoxDecoration(
+        color: Palette.white,
+        borderRadius: BorderRadius.circular(48),
+        // 테스트 렌더러는 그림자를 흐리게 그리지 못해 테두리로 띄운다.
+        border: Border.all(color: Palette.grey300, width: 2),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              ClipOval(
+                child: Image.network(_img('avatar'), width: 72, height: 72),
+              ),
+              const SizedBox(width: 24),
+              _bar(260, 26, Palette.grey800),
+              const Spacer(),
+              _bar(120, 22, Palette.grey300),
+            ],
+          ),
+          const SizedBox(height: 20),
+          for (final (index, row) in _rows.indexed) ...[
+            if (index > 0)
+              const Divider(height: 2, thickness: 2, color: Palette.grey200),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 24),
+              child: Row(
+                children: [
+                  Icon(
+                    row.checked
+                        ? Icons.check_box
+                        : Icons.check_box_outline_blank,
+                    size: 56,
+                    color: row.checked ? Palette.grey900 : Palette.grey300,
+                  ),
+                  const SizedBox(width: 32),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        for (final (i, width) in row.lines.indexed)
+                          if (width > 0)
+                            Padding(
+                              padding: EdgeInsets.only(top: i == 0 ? 0 : 18),
+                              child: FractionallySizedBox(
+                                widthFactor: width,
+                                child: _bar(null, 22, Palette.grey300),
+                              ),
+                            ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 32),
+                  if (row.thumb case final thumb?)
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(20),
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          Image.network(
+                            _img(thumb),
+                            width: 128,
+                            height: 128,
+                            fit: BoxFit.cover,
+                          ),
+                          if (row.video)
+                            const Icon(
+                              Icons.play_circle_fill,
+                              size: 52,
+                              color: Palette.white,
+                            ),
+                        ],
+                      ),
+                    )
+                  else
+                    const SizedBox(width: 128, height: 64),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  static Widget _bar(double? width, double height, Color color) => Container(
+    width: width,
+    height: height,
+    decoration: BoxDecoration(
+      color: color,
+      borderRadius: BorderRadius.circular(height / 2),
+    ),
+  );
+}

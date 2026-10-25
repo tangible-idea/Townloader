@@ -10,6 +10,8 @@ import '../format.dart';
 import 'download_options_sheet.dart';
 import 'inline_video.dart';
 import 'network_thumb.dart';
+import 'open_original.dart';
+import 'personal_use_notice.dart';
 
 /// 해석된 게시물 하나를 미리보기와 다운로드 버튼으로 보여준다.
 class PostCard extends StatelessWidget {
@@ -114,6 +116,7 @@ class PostCard extends StatelessWidget {
               ],
             ),
           ),
+          OpenOriginalButton(post: post),
           if (post.permalink != null)
             IconButton(
               tooltip: S.of(context).copyLink,
@@ -271,7 +274,10 @@ class PostCard extends StatelessWidget {
       children: [
         Expanded(
           child: FilledButton.icon(
-            onPressed: () {
+            onPressed: () async {
+              if (!await confirmPersonalUse(context) || !context.mounted) {
+                return;
+              }
               final settings = context.read<SettingsController>();
               final count = context.read<DownloadService>().enqueuePost(
                 post,

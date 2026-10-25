@@ -22,4 +22,17 @@ class AppConfig {
   static const String poeApiKey = String.fromEnvironment('POE_API_KEY');
 
   static bool get hasPoeKey => poeApiKey.isNotEmpty;
+
+  /// 스레드 요약 프록시(Cloudflare Worker) 주소. 안 넘기면 요약 카드가 숨는다.
+  /// Claude·Poe 키는 프록시에만 있고 앱에는 들어가지 않는다.
+  static const String summaryProxyUrl = String.fromEnvironment(
+    'SUMMARY_PROXY_URL',
+  );
+
+  /// 프록시가 확인하는 앱 토큰. 비밀은 아니며, 아무 요청이나 받지 않게 하는 관문이다.
+  static const String summaryAppToken = String.fromEnvironment(
+    'SUMMARY_APP_TOKEN',
+  );
+
+  static bool get hasSummaryProxy => summaryProxyUrl.isNotEmpty;
 }

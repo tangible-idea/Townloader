@@ -58,6 +58,8 @@ class SettingsStore {
   static const _keyApiKey = 'hiker_api_key';
   static const _keyQuality = 'quality_preference';
   static const _keySaveToGallery = 'save_to_gallery';
+  static const _keyPersonalUseAck = 'personal_use_ack';
+  static const _keyAiSummaryConsent = 'ai_summary_consent';
 
   /// 키체인이 정말 동작하는지 한 번만 확인하고 결과를 재사용한다.
   static const _canary = '__townloader_probe';
@@ -104,6 +106,19 @@ class SettingsStore {
 
   Future<bool> writeSaveToGallery(bool value) =>
       _write(_keySaveToGallery, value.toString());
+
+  /// 처음 저장할 때 띄우는 개인 보관 안내에 동의했는지.
+  Future<bool> readPersonalUseAck() async =>
+      (await _read(_keyPersonalUseAck)) == 'true';
+
+  Future<bool> writePersonalUseAck() => _write(_keyPersonalUseAck, 'true');
+
+  /// 글과 댓글을 AI 요약 서비스로 보내는 데 동의했는지.
+  Future<bool> readAiSummaryConsent() async =>
+      (await _read(_keyAiSummaryConsent)) == 'true';
+
+  Future<bool> writeAiSummaryConsent() =>
+      _write(_keyAiSummaryConsent, 'true');
 
   Future<String?> _read(String key) async {
     if (await backend == SettingsBackend.keychain) {

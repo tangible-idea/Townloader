@@ -11,6 +11,7 @@ import 'format.dart';
 import 'widgets/download_options_sheet.dart';
 import 'widgets/network_thumb.dart';
 import 'widgets/state_views.dart';
+import 'widgets/personal_use_notice.dart';
 
 /// 계정 하나의 게시물·릴스·스토리를 훑어보고 골라 받는 화면.
 class ProfileScreen extends StatefulWidget {
@@ -280,9 +281,12 @@ class ProfileScreenState extends State<ProfileScreen> {
             Align(
               alignment: Alignment.centerRight,
               child: TextButton.icon(
-                onPressed: () {
+                onPressed: () async {
                   // 계정명 입력창에 포커스가 남아 있으면 키보드가 목록을 가린다.
                   FocusScope.of(context).unfocus();
+                  if (!await confirmPersonalUse(context) || !context.mounted) {
+                    return;
+                  }
 
                   final settings = context.read<SettingsController>();
                   final count = context.read<DownloadService>().enqueueAll(
@@ -318,7 +322,8 @@ class ProfileScreenState extends State<ProfileScreen> {
     return InkWell(
       borderRadius: BorderRadius.circular(12),
       onLongPress: () => DownloadOptionsSheet.show(context, post),
-      onTap: () {
+      onTap: () async {
+        if (!await confirmPersonalUse(context) || !context.mounted) return;
         final count = context.read<DownloadService>().enqueuePost(
           post,
           quality: settings.quality,

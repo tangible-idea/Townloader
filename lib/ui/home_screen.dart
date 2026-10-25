@@ -11,6 +11,7 @@ import '../state/settings_controller.dart';
 import 'widgets/post_card.dart';
 import 'widgets/state_views.dart';
 import 'widgets/thread_tree.dart';
+import 'widgets/personal_use_notice.dart';
 
 /// 링크를 붙여넣어 게시물을 받는 기본 화면.
 class HomeScreen extends StatefulWidget {
@@ -230,15 +231,14 @@ class HomeScreenState extends State<HomeScreen> {
     if (mounted) _submit();
   }
 
-  /// 다른 앱에서 공유한 링크를 받아 곧바로 해석하고 전부 다운로드에 넣는다.
+  /// 다른 앱에서 공유한 링크를 받아 곧바로 열어 보여 준다. 저장은 사용자가 고른다.
   void handleSharedLink(String link) {
     _controller.text = link;
     setState(() {});
-    _submit(autoDownload: true);
+    _submit();
   }
 
-  /// [autoDownload] 면 해석이 끝나는 대로 결과 전체를 다운로드 큐에 넣는다.
-  Future<void> _submit({bool autoDownload = false}) async {
+  Future<void> _submit() async {
     final input = _controller.text.trim();
     if (input.isEmpty) return;
 
@@ -251,19 +251,14 @@ class HomeScreenState extends State<HomeScreen> {
 
     _focusNode.unfocus();
     final resolve = context.read<ResolveController>();
-    await resolve.resolve(input);
-
     // 실패하면 오류 화면이 그대로 남아 이유를 보여 준다.
-    final result = resolve.result;
-    if (!autoDownload || !mounted || result == null) return;
-    // 스레드는 받을 범위를 사용자가 고른 뒤에 받는다.
-    if (result.thread != null) return;
-    _downloadPosts(result.posts);
+    await resolve.resolve(input);
   }
 
-  void _downloadPosts(List<IgPost> posts) {
+  Future<void> _downloadPosts(List<IgPost> posts) async {
     // 입력창에 포커스가 남아 있으면 키보드가 목록을 가리므로 먼저 내린다.
     FocusScope.of(context).unfocus();
+    if (!await confirmPersonalUse(context) || !mounted) return;
 
     final settings = context.read<SettingsController>();
     final count = context.read<DownloadService>().enqueueAll(

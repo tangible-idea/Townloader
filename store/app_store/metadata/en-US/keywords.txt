@@ -1,1 +1,1 @@
-downloader,save,video,photo,story,highlight,saver,hd,original,quality,gallery,backup,archive,media
+reader,thread,viewer,archive,save,photo,video,original,quality,backup,gallery,offline,hd
