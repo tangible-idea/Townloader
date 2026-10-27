@@ -45,7 +45,7 @@ class SummaryClient {
     final root = thread.root;
     final body = {
       'provider': provider.name,
-      'id': root.code ?? root.pk,
+      'id': '${root.source.name}-${root.code ?? root.pk}',
       'lang': isKo ? 'ko' : 'en',
       'posts': [
         for (final node in thread.nodes)

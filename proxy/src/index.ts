@@ -209,6 +209,7 @@ const HIKER_ROUTES: Record<string, number> = {
   "/v1/story/by/id": 300,
   "/v1/story/by/url": 300,
   "/v1/highlight/by/url": 900,
+  "/v2/media/comments": 600,
 };
 
 async function proxyHiker(

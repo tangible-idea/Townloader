@@ -1,6 +1,7 @@
 import '../models/ig_asset.dart';
 import '../models/ig_post.dart';
 import '../models/ig_user.dart';
+import '../models/threads_thread.dart';
 
 /// HikerAPI 의 원시 미디어 JSON 을 앱 모델로 옮긴다.
 ///
@@ -219,6 +220,55 @@ class MediaParser {
     String() => double.tryParse(value),
     _ => null,
   };
+
+  /// `/v2/media/comments` 응답을 스레드 트리의 댓글 노드로 바꾼다.
+  ///
+  /// 첫 묶음(약 15개)만 오고, 댓글마다 대댓글 몇 개가 `preview_child_comments` 로
+  /// 미리 실린다. 대댓글은 한 단계 더 들여 쓴다. 글이 없는 댓글(스티커 등)은 뺀다.
+  static ({List<ThreadNode> nodes, bool hasMore}) parseComments(
+    Map<String, dynamic>? json,
+  ) {
+    final response = json?['response'];
+    final body = response is Map<String, dynamic> ? response : json;
+    final comments = body?['comments'];
+    final nodes = <ThreadNode>[];
+    if (comments is List) {
+      for (final comment in comments.whereType<Map<String, dynamic>>()) {
+        final node = _commentNode(comment, depth: 1);
+        if (node == null) continue;
+        nodes.add(node);
+        final children = comment['preview_child_comments'];
+        if (children is List) {
+          for (final child in children.whereType<Map<String, dynamic>>()) {
+            final childNode = _commentNode(child, depth: 2);
+            if (childNode != null) nodes.add(childNode);
+          }
+        }
+      }
+    }
+    return (nodes: nodes, hasMore: body?['has_more_comments'] == true);
+  }
+
+  static ThreadNode? _commentNode(
+    Map<String, dynamic> json, {
+    required int depth,
+  }) {
+    final pk = json['pk']?.toString();
+    final text = (json['text'] as String?)?.trim();
+    if (pk == null || pk.isEmpty || text == null || text.isEmpty) return null;
+    return ThreadNode(
+      post: IgPost(
+        pk: pk,
+        kind: PostKind.photo,
+        user: IgUser.fromJson(json['user'] as Map<String, dynamic>?),
+        caption: text,
+        takenAt: _dateTime(json['created_at_utc'] ?? json['created_at']),
+        items: const [],
+      ),
+      role: ThreadRole.reply,
+      depth: depth,
+    );
+  }
 
   /// `taken_at` 은 엔드포인트에 따라 유닉스 초 또는 ISO 8601 문자열로 온다.
   static DateTime? _dateTime(Object? value) {

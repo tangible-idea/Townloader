@@ -131,7 +131,7 @@ void main() {
     expect(find.text('summary from claude'), findsOneWidget);
 
     final sent = requests.single;
-    expect(sent['id'], 'Root1');
+    expect(sent['id'], 'threads-Root1');
     expect(sent['posts'], [
       {'author': 'author', 'text': '(1/2) first', 'byAuthor': true},
       {'author': 'author', 'text': '(2/2) second', 'byAuthor': true},

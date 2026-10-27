@@ -116,11 +116,38 @@ class IgRepository {
     if (post == null || !post.hasDownloadableAssets) {
       throw HikerException('이 게시물에서 내려받을 수 있는 파일을 찾지 못했습니다.');
     }
+    return _postWithComments(post);
+  }
+
+  /// 게시물 하나와 그 댓글 첫 묶음을 Threads 와 같은 스레드 트리로 묶는다.
+  /// 댓글을 못 가져오거나 하나도 없으면 게시물만 보여 준다.
+  Future<ResolveResult> _postWithComments(IgPost post) async {
+    final title =
+        '@${post.authorName} · ${post.kind.localizedLabel(S.current.isKo)}';
+
+    ThreadsThread? thread;
+    try {
+      final comments = MediaParser.parseComments(
+        _asMap(await _client.get('/v2/media/comments', query: {'id': post.pk})),
+      );
+      if (comments.nodes.isNotEmpty) {
+        thread = ThreadsThread(
+          nodes: [
+            ThreadNode(post: post, role: ThreadRole.root, depth: 0),
+            ...comments.nodes,
+          ],
+          hasMoreReplies: comments.hasMore,
+        );
+      }
+    } on HikerException {
+      thread = null;
+    }
+
     return ResolveResult(
-      title:
-          '@${post.authorName} · ${post.kind.localizedLabel(S.current.isKo)}',
+      title: title,
       posts: [post],
       user: post.user,
+      thread: thread,
     );
   }
 
@@ -135,12 +162,7 @@ class IgRepository {
     if (post == null || !post.hasDownloadableAssets) {
       throw HikerException('공유 링크에서 게시물을 찾지 못했습니다. 원본 게시물 주소로 다시 시도해 주세요.');
     }
-    return ResolveResult(
-      title:
-          '@${post.authorName} · ${post.kind.localizedLabel(S.current.isKo)}',
-      posts: [post],
-      user: post.user,
-    );
+    return _postWithComments(post);
   }
 
   /// `/s/<token>` 링크는 먼저 무엇을 가리키는지 물어본 뒤 다시 분기한다.
