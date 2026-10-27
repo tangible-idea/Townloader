@@ -15,4 +15,13 @@ binding = "SUMMARIES"
 id = "63bf1da5d5b4438db7efee51cee60f08"
 
 # 비밀값은 여기에 쓰지 않고 `npx wrangler secret put <이름>` 으로 넣는다:
-#   ANTHROPIC_API_KEY, POE_API_KEY, APP_TOKEN
+#   ANTHROPIC_API_KEY, POE_API_KEY, HIKER_API_KEY, APP_TOKEN
+
+# HikerAPI 조회의 IP 별 분당 제한. namespace_id 는 계정 안에서 겹치지 않는 아무 숫자.
+[[ratelimits]]
+name = "HIKER_LIMITER"
+namespace_id = "1001"
+
+  [ratelimits.simple]
+  limit = 60
+  period = 60

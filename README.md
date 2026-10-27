@@ -75,6 +75,21 @@ Poe API 의 `ElevenLabs-v2.5-Turbo` 봇으로 댓글을 한 개씩 음성으로 
 읽는 동안 다음 댓글의 음성을 미리 만들어 둡니다. 키가 없으면 버튼이 보이지 않습니다.
 Poe 포인트가 글자 수만큼 쓰이니 공개 배포본에는 키를 심지 말고 프록시를 두세요.
 
+### 키를 숨기는 프록시 (공개 배포용)
+
+공개 배포본에는 키를 심지 말고 `proxy/` 의 Cloudflare Worker 를 거치게 합니다. HikerAPI 조회와
+스레드 AI 요약(Claude·Poe)이 모두 이 Worker 를 지나가고, 키는 Worker secret 에만 있습니다.
+앱에는 `.env.json` 의 `PROXY_URL`, `PROXY_APP_TOKEN` 만 넣고 `HIKER_API_KEY` 는 비워 둡니다.
+
+```bash
+cd proxy
+npx wrangler secret put HIKER_API_KEY      # ANTHROPIC_API_KEY, POE_API_KEY, APP_TOKEN 도 같은 방법
+npx wrangler deploy
+```
+
+Worker 는 앱이 쓰는 HikerAPI 경로만 통과시키고, IP 별 분당 요청 수를 제한합니다.
+응답 캐시(Cache API)는 Worker 에 사용자 도메인을 붙였을 때만 동작하고, workers.dev 주소에서는 꺼져 있습니다.
+
 > **주의**: 이렇게 심은 키는 비밀이 아닙니다. 컴파일된 스냅샷에 문자열로 남아
 > 배포본을 뜯으면 복원할 수 있습니다. HikerAPI 는 호출 건수로 과금하므로,
 > 불특정 다수에게 공개 배포하는 빌드에 키를 심으면 크레딧이 소진될 수 있습니다.

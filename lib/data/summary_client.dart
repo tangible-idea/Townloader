@@ -27,8 +27,8 @@ class SummaryException implements Exception {
 /// 요약 프록시(Cloudflare Worker)에 스레드 글과 댓글을 보내 요약을 받는다.
 class SummaryClient {
   SummaryClient({String? baseUrl, String? appToken, http.Client? httpClient})
-    : _baseUrl = baseUrl ?? AppConfig.summaryProxyUrl,
-      _appToken = appToken ?? AppConfig.summaryAppToken,
+    : _baseUrl = baseUrl ?? AppConfig.proxyUrl,
+      _appToken = appToken ?? AppConfig.proxyAppToken,
       _http = httpClient ?? http.Client();
 
   final String _baseUrl;

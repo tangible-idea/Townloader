@@ -192,7 +192,7 @@ class _ThreadTreeState extends State<ThreadTree> {
     );
 
     // 요약은 글이 있어야 의미가 있고, 프록시가 설정된 빌드에서만 보인다.
-    final summary = AppConfig.hasSummaryProxy && thread.nodes.length > 1
+    final summary = AppConfig.hasProxy && thread.nodes.length > 1
         ? ThreadSummaryCard(thread: thread)
         : null;
 

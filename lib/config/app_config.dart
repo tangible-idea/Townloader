@@ -13,6 +13,7 @@ class AppConfig {
   const AppConfig._();
 
   /// 빌드에 심어 둔 HikerAPI 액세스 키. 안 넘기면 빈 문자열이다.
+  /// 프록시를 쓰는 빌드에서는 넣지 않는다. 개발용으로 직접 부를 때만 쓴다.
   static const String hikerApiKey = String.fromEnvironment('HIKER_API_KEY');
 
   static bool get hasBundledHikerKey => hikerApiKey.isNotEmpty;
@@ -23,16 +24,13 @@ class AppConfig {
 
   static bool get hasPoeKey => poeApiKey.isNotEmpty;
 
-  /// 스레드 요약 프록시(Cloudflare Worker) 주소. 안 넘기면 요약 카드가 숨는다.
-  /// Claude·Poe 키는 프록시에만 있고 앱에는 들어가지 않는다.
-  static const String summaryProxyUrl = String.fromEnvironment(
-    'SUMMARY_PROXY_URL',
-  );
+  /// 키를 쥔 프록시(Cloudflare Worker, `proxy/`) 주소. HikerAPI 조회와 스레드 요약이
+  /// 이곳을 거치고, HikerAPI·Claude·Poe 키는 프록시에만 있다.
+  /// 안 넘기면 HikerAPI 는 [hikerApiKey] 로 직접 부르고 요약 카드는 숨는다.
+  static const String proxyUrl = String.fromEnvironment('PROXY_URL');
 
   /// 프록시가 확인하는 앱 토큰. 비밀은 아니며, 아무 요청이나 받지 않게 하는 관문이다.
-  static const String summaryAppToken = String.fromEnvironment(
-    'SUMMARY_APP_TOKEN',
-  );
+  static const String proxyAppToken = String.fromEnvironment('PROXY_APP_TOKEN');
 
-  static bool get hasSummaryProxy => summaryProxyUrl.isNotEmpty;
+  static bool get hasProxy => proxyUrl.isNotEmpty;
 }

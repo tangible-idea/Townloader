@@ -35,7 +35,8 @@ class SettingsController extends ChangeNotifier {
   /// 저장소에서 값을 읽어오기 전에는 "키 없음" 화면을 띄우지 않기 위한 플래그.
   bool get isLoaded => _isLoaded;
 
-  bool get hasApiKey => (apiKey?.isNotEmpty ?? false);
+  /// 인스타그램을 조회할 수 있는지. 프록시가 있으면 키는 프록시가 들고 있다.
+  bool get hasApiKey => AppConfig.hasProxy || (apiKey?.isNotEmpty ?? false);
 
   /// 설정값이 실제로 어디에 저장되는지. 설정 화면이 그대로 표시한다.
   SettingsBackend get backend => _backend;

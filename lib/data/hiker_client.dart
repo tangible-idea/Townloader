@@ -3,6 +3,8 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../config/app_config.dart';
+
 /// HikerAPI 호출이 실패했을 때 UI 가 그대로 보여줄 수 있는 예외.
 class HikerException implements Exception {
   HikerException(this.message, {this.statusCode, this.detail});
@@ -26,9 +28,18 @@ class HikerException implements Exception {
 ///
 /// 인증은 `x-access-key` 헤더 하나로 끝나고, 모든 엔드포인트가 GET 이다.
 /// 여기서는 전송과 오류 변환만 맡고, 응답 해석은 [IgRepository] 가 한다.
+///
+/// [proxyUrl] 이 있으면 키 없이 프록시(`<proxyUrl>/hiker/<경로>`)로 보내고,
+/// 프록시가 키를 붙여 HikerAPI 로 넘긴다. 응답은 HikerAPI 것과 같다.
 class HikerClient {
-  HikerClient({required this.readApiKey, http.Client? httpClient})
-    : _http = httpClient ?? http.Client();
+  HikerClient({
+    required this.readApiKey,
+    http.Client? httpClient,
+    String? proxyUrl,
+    String? appToken,
+  }) : _http = httpClient ?? http.Client(),
+       _proxyUrl = proxyUrl ?? AppConfig.proxyUrl,
+       _appToken = appToken ?? AppConfig.proxyAppToken;
 
   static const String host = 'api.hikerapi.com';
 
@@ -37,26 +48,32 @@ class HikerClient {
   final String? Function() readApiKey;
 
   final http.Client _http;
+  final String _proxyUrl;
+  final String _appToken;
 
   /// 응답 대기 한도. HikerAPI 는 인스타그램을 대신 조회하므로 느릴 때가 있다.
   static const Duration timeout = Duration(seconds: 45);
 
   Future<dynamic> get(String path, {Map<String, dynamic>? query}) async {
-    final key = readApiKey();
-    if (key == null || key.isEmpty) {
-      throw HikerException('이 빌드에는 인스타그램 조회용 키가 들어 있지 않습니다.', statusCode: 401);
+    final Uri uri;
+    final Map<String, String> headers;
+    if (_proxyUrl.isNotEmpty) {
+      uri = Uri.parse(
+        '$_proxyUrl/hiker$path',
+      ).replace(queryParameters: _stringifyQuery(query));
+      headers = {'x-app-token': _appToken, 'accept': 'application/json'};
+    } else {
+      final key = readApiKey();
+      if (key == null || key.isEmpty) {
+        throw HikerException('이 빌드에는 인스타그램 조회용 키가 들어 있지 않습니다.', statusCode: 401);
+      }
+      uri = Uri.https(host, path, _stringifyQuery(query));
+      headers = {'x-access-key': key, 'accept': 'application/json'};
     }
-
-    final uri = Uri.https(host, path, _stringifyQuery(query));
 
     final http.Response response;
     try {
-      response = await _http
-          .get(
-            uri,
-            headers: {'x-access-key': key, 'accept': 'application/json'},
-          )
-          .timeout(timeout);
+      response = await _http.get(uri, headers: headers).timeout(timeout);
     } on TimeoutException {
       throw HikerException('요청 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요.');
     } catch (error) {

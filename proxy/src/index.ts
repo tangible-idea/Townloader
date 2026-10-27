@@ -10,11 +10,15 @@ import Anthropic from "@anthropic-ai/sdk";
  *   { "provider": "claude" | "poe", "id": "<게시물 코드>", "lang": "ko" | "en",
  *     "posts": [{ "author": "...", "text": "...", "byAuthor": true }] }
  *   -> { "summary": "...", "provider": "...", "model": "...", "cached": false }
+ *
+ *   GET /hiker/<HikerAPI 경로>?<쿼리>
+ *   -> HikerAPI 응답을 그대로 돌려준다. 앱이 쓰는 경로만 통과시키고, 키는 여기서 붙인다.
  */
 
 export interface Env {
   ANTHROPIC_API_KEY: string;
   POE_API_KEY: string;
+  HIKER_API_KEY: string;
   /** 앱이 함께 보내는 토큰. 빌드에 들어가므로 비밀은 아니고, 아무 요청이나 받지 않게 하는 1차 관문이다. */
   APP_TOKEN: string;
   /** Poe 봇 이름. wrangler.toml 의 vars 에서 정한다. */
@@ -22,6 +26,8 @@ export interface Env {
   /** 하루에 IP 하나가 새로 만들 수 있는 요약 수. 캐시된 요약은 세지 않는다. */
   DAILY_LIMIT: string;
   SUMMARIES: KVNamespace;
+  /** HikerAPI 조회의 IP 별 분당 제한. */
+  HIKER_LIMITER: RateLimit;
 }
 
 type Provider = "claude" | "poe";
@@ -45,14 +51,21 @@ const MAX_TEXT = 2000;
 const CACHE_TTL_SECONDS = 60 * 60 * 24 * 7;
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(
+    request: Request,
+    env: Env,
+    ctx: ExecutionContext,
+  ): Promise<Response> {
     const url = new URL(request.url);
-    if (request.method !== "POST" || url.pathname !== "/summarize") {
+    const isSummary = request.method === "POST" && url.pathname === "/summarize";
+    const isHiker = request.method === "GET" && url.pathname.startsWith("/hiker/");
+    if (!isSummary && !isHiker) {
       return json({ error: "not_found" }, 404);
     }
     if (request.headers.get("x-app-token") !== env.APP_TOKEN) {
       return json({ error: "unauthorized" }, 401);
     }
+    if (isHiker) return proxyHiker(url, request, env, ctx);
 
     let body: SummarizeRequest;
     try {
@@ -175,6 +188,67 @@ async function summarizeWithPoe(
   const summary = data.choices?.[0]?.message?.content?.trim();
   if (!summary) throw new Error("empty summary");
   return { summary, provider: "poe", model: env.POE_MODEL };
+}
+
+// ── HikerAPI ─────────────────────────────────────────────────────────────────
+
+/**
+ * 앱이 쓰는 HikerAPI 경로와 캐시 시간(초). 여기 없는 경로는 막아서, 앱 토큰이 새어도
+ * 다른 엔드포인트로 크레딧을 쓰지 못하게 한다. 스토리처럼 금방 바뀌는 것은 짧게 둔다.
+ */
+const HIKER_ROUTES: Record<string, number> = {
+  "/v1/media/by/code": 6 * 3600,
+  "/v1/media/by/id": 6 * 3600,
+  "/v1/media/by/url": 6 * 3600,
+  "/v2/media/info/by/code": 6 * 3600,
+  "/v1/share/by/url": 3600,
+  "/v1/user/by/username": 3600,
+  "/v1/user/medias/chunk": 900,
+  "/v1/user/clips/chunk": 900,
+  "/v1/user/stories/by/username": 300,
+  "/v1/story/by/id": 300,
+  "/v1/story/by/url": 300,
+  "/v1/highlight/by/url": 900,
+};
+
+async function proxyHiker(
+  url: URL,
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext,
+): Promise<Response> {
+  const path = url.pathname.slice("/hiker".length);
+  const ttl = HIKER_ROUTES[path];
+  if (ttl === undefined) return json({ detail: "not allowed" }, 403);
+
+  // 쿼리 순서가 달라도 같은 캐시를 쓰도록 정렬한다.
+  const query = new URLSearchParams([...url.searchParams].sort());
+  const target = `https://api.hikerapi.com${path}?${query}`;
+
+  // Cache API 는 사용자 도메인에서만 동작하고 workers.dev 에서는 그냥 지나간다.
+  const cache = caches.default;
+  const cacheKey = new Request(`https://hiker-cache.townloader.internal${path}?${query}`);
+  const hit = await cache.match(cacheKey);
+  if (hit) return hit;
+
+  const ip = request.headers.get("cf-connecting-ip") ?? "unknown";
+  const { success } = await env.HIKER_LIMITER.limit({ key: ip });
+  if (!success) return json({ detail: "rate limited" }, 429);
+
+  const upstream = await fetch(target, {
+    headers: { "x-access-key": env.HIKER_API_KEY, accept: "application/json" },
+  });
+  const body = await upstream.arrayBuffer();
+  const response = new Response(body, {
+    status: upstream.status,
+    headers: { "content-type": "application/json; charset=utf-8" },
+  });
+  if (upstream.status === 200) {
+    const cached = response.clone();
+    cached.headers.set("cache-control", `max-age=${ttl}`);
+    ctx.waitUntil(cache.put(cacheKey, cached));
+  }
+  return response;
 }
 
 // ── 요청 검사 · 제한 ─────────────────────────────────────────────────────────
