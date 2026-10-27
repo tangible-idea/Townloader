@@ -188,33 +188,32 @@ class HomeScreenState extends State<HomeScreen> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    result.title,
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                if (result.thread == null && result.posts.length > 1)
-                  TextButton.icon(
-                    onPressed: () => _downloadPosts(result.posts),
-                    icon: const Icon(Icons.download),
-                    label: Text(s.downloadAll),
-                  ),
-              ],
+            Text(
+              result.title,
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 12),
-            // Threads 스레드는 트리로 먼저 보여 주고 받을 범위를 고르게 한다.
+            // 먼저 읽게 하고, 받기 버튼은 맨 아래에 둔다.
+            // 스레드는 트리로 보여 주고 받을 범위를 고르게 한다.
             if (result.thread case final thread?)
               ThreadTree(thread: thread, onDownload: _downloadPosts)
-            else
+            else ...[
               for (final post in result.posts) ...[
-                PostCard(post: post),
+                PostCard(post: post, showActions: false),
                 const SizedBox(height: 12),
               ],
+              const SizedBox(height: 12),
+              if (result.posts.length == 1)
+                PostDownloadActions(post: result.posts.single)
+              else
+                FilledButton.icon(
+                  onPressed: () => _downloadPosts(result.posts),
+                  icon: const Icon(Icons.download),
+                  label: Text(s.downloadAll),
+                ),
+            ],
           ],
         ),
       ),

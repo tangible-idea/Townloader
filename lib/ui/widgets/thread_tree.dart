@@ -106,46 +106,46 @@ class _ThreadTreeState extends State<ThreadTree> {
     }
   }
 
-  Widget _repliesHeader(BuildContext context, int count) {
+  /// 화면 맨 위의 읽기 도구: AI 요약과 댓글 읽어주기. 받기보다 먼저 보이게 둔다.
+  List<Widget> _readingTools(BuildContext context, int replyCount) {
     final s = S.of(context);
     final reader = _reader;
-    final header = _SectionHeader(label: s.repliesSection(count));
-    if (reader == null) return header;
+    // 요약은 글이 있어야 의미가 있고, 프록시가 설정된 빌드에서만 보인다.
+    final showSummary = AppConfig.hasProxy && thread.nodes.length > 1;
+    final showReader = reader != null && replyCount > 0;
+    if (!showSummary && !showReader) return const [];
 
-    return Row(
-      children: [
-        Expanded(child: header),
-        Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: TextButton.icon(
-            onPressed: _toggleReading,
-            icon: reader.isActive
-                ? (reader.isLoading
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.stop_circle_outlined, size: 18))
-                : const Icon(Icons.record_voice_over_outlined, size: 18),
-            label: Text(reader.isActive ? s.stopReading : s.readReplies),
-          ),
+    return [
+      if (showSummary) ThreadSummaryCard(thread: thread),
+      if (showSummary && showReader) const SizedBox(height: 8),
+      if (showReader)
+        FilledButton.tonalIcon(
+          style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+          onPressed: _toggleReading,
+          icon: reader.isActive
+              ? (reader.isLoading
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.stop_circle_outlined))
+              : const Icon(Icons.record_voice_over_outlined),
+          label: Text(reader.isActive ? s.stopReading : s.readReplies),
         ),
-      ],
-    );
+      const SizedBox(height: 16),
+    ];
   }
 
   ThreadsThread get thread => widget.thread;
 
-  /// 작성자가 이어 단 글이 없으면 본문을 카드로 크게 보여 준다. 카드에 받기 버튼이
-  /// 따로 있으므로 체크 대상에서는 뺀다.
+  /// 작성자가 이어 단 글이 없으면 본문을 카드로 크게 보여 준다. 받기는 다른 글과
+  /// 마찬가지로 맨 아래에서 한다.
   bool get _singleAuthorPost => widget.thread.authorPostCount == 1;
 
   Set<ThreadNode> _allSelectable() => {
     for (final node in widget.thread.nodes)
-      if (node.post.hasDownloadableAssets &&
-          !(_singleAuthorPost && node.role == ThreadRole.root))
-        node,
+      if (node.post.hasDownloadableAssets) node,
   };
 
   @override
@@ -191,28 +191,26 @@ class _ThreadTreeState extends State<ThreadTree> {
       onToggle: node.post.hasDownloadableAssets ? () => _toggle(node) : null,
     );
 
-    // 요약은 글이 있어야 의미가 있고, 프록시가 설정된 빌드에서만 보인다.
-    final summary = AppConfig.hasProxy && thread.nodes.length > 1
-        ? ThreadSummaryCard(thread: thread)
-        : null;
+    final tools = _readingTools(context, replyNodes.length);
+    final repliesHeader = _SectionHeader(
+      label: s.repliesSection(replyNodes.length),
+    );
 
     if (_singleAuthorPost) {
       // 글이 하나뿐이면 목록 대신 카드로 크게, 동영상도 그 자리에서 재생한다.
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (summary != null) ...[summary, const SizedBox(height: 16)],
-          PostCard(post: thread.root),
+          ...tools,
+          PostCard(post: thread.root, showActions: false),
           if (replyNodes.isNotEmpty) ...[
             const SizedBox(height: 16),
-            _repliesHeader(context, replyNodes.length),
+            repliesHeader,
             _section([for (final node in replyNodes) row(node)]),
           ],
           if (thread.hasMoreReplies) _moreRepliesNote(context),
-          if (replyNodes.isNotEmpty && _allSelectable().isNotEmpty) ...[
-            const SizedBox(height: 16),
-            _choices(context),
-          ],
+          const SizedBox(height: 24),
+          _choices(context),
         ],
       );
     }
@@ -220,7 +218,7 @@ class _ThreadTreeState extends State<ThreadTree> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (summary != null) ...[summary, const SizedBox(height: 16)],
+        ...tools,
         _SectionHeader(
           post: thread.root,
           label: s.authorThreadSection(authorNodes.length),
@@ -228,12 +226,12 @@ class _ThreadTreeState extends State<ThreadTree> {
         _section([for (final node in authorNodes) row(node)]),
         if (replyNodes.isNotEmpty) ...[
           const SizedBox(height: 16),
-          _repliesHeader(context, replyNodes.length),
+          repliesHeader,
           _section([for (final node in replyNodes) row(node)]),
         ],
         if (thread.hasMoreReplies) _moreRepliesNote(context),
         // 글을 다 읽은 뒤에 받을 것을 고르도록 맨 아래에 둔다.
-        const SizedBox(height: 16),
+        const SizedBox(height: 24),
         _choices(context),
       ],
     );

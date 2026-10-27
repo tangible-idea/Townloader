@@ -120,7 +120,7 @@ void main() {
     final settings = await pump(tester, consent: false);
     expect(requests, isEmpty);
 
-    await tester.tap(find.byType(OutlinedButton));
+    await tester.tap(find.text('Show summary'));
     await tester.pumpAndSettle();
     expect(find.byType(AlertDialog), findsOneWidget);
     expect(requests, isEmpty);

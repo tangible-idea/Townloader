@@ -15,9 +15,13 @@ import 'personal_use_notice.dart';
 
 /// 해석된 게시물 하나를 미리보기와 다운로드 버튼으로 보여준다.
 class PostCard extends StatelessWidget {
-  const PostCard({super.key, required this.post});
+  const PostCard({super.key, required this.post, this.showActions = true});
 
   final IgPost post;
+
+  /// false 면 읽기 화면용으로 본문을 다 보여 주고 받기 버튼을 뺀다.
+  /// 받기는 화면 맨 아래에서 따로 한다.
+  final bool showActions;
 
   @override
   Widget build(BuildContext context) {
@@ -37,15 +41,17 @@ class PostCard extends StatelessWidget {
                 if (post.caption != null) ...[
                   Text(
                     post.caption!,
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
+                    maxLines: showActions ? 3 : null,
+                    overflow: showActions ? TextOverflow.ellipsis : null,
                     style: theme.textTheme.bodyMedium,
                   ),
                   const SizedBox(height: 12),
                 ],
                 _stats(context),
-                const SizedBox(height: 14),
-                _actions(context),
+                if (showActions) ...[
+                  const SizedBox(height: 14),
+                  PostDownloadActions(post: post),
+                ],
               ],
             ),
           ),
@@ -266,7 +272,35 @@ class PostCard extends StatelessWidget {
     );
   }
 
-  Widget _actions(BuildContext context) {
+  static Widget _pill(String text) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+    decoration: BoxDecoration(
+      color: Colors.black.withValues(alpha: 0.6),
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: Text(
+      text,
+      style: const TextStyle(color: Colors.white, fontSize: 11),
+    ),
+  );
+
+  static void _toast(BuildContext context, String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
+      );
+  }
+}
+
+/// 게시물 하나를 받는 버튼과, 화질 변형이 있으면 화질 고르기 버튼.
+class PostDownloadActions extends StatelessWidget {
+  const PostDownloadActions({super.key, required this.post});
+
+  final IgPost post;
+
+  @override
+  Widget build(BuildContext context) {
     final s = S.of(context);
     final hasVariantChoice = post.items.any((item) => item.variants.length > 1);
 
@@ -283,7 +317,7 @@ class PostCard extends StatelessWidget {
                 post,
                 quality: settings.quality,
               );
-              _toast(context, s.downloadStarted(count));
+              PostCard._toast(context, s.downloadStarted(count));
             },
             icon: const Icon(Icons.download),
             label: Text(
@@ -303,25 +337,5 @@ class PostCard extends StatelessWidget {
         ],
       ],
     );
-  }
-
-  static Widget _pill(String text) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-    decoration: BoxDecoration(
-      color: Colors.black.withValues(alpha: 0.6),
-      borderRadius: BorderRadius.circular(8),
-    ),
-    child: Text(
-      text,
-      style: const TextStyle(color: Colors.white, fontSize: 11),
-    ),
-  );
-
-  static void _toast(BuildContext context, String message) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
-      );
   }
 }

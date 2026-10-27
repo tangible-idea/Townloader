@@ -172,13 +172,13 @@ class _ThreadSummaryCardState extends State<ThreadSummaryCard> {
             ),
             const SizedBox(height: 12),
             if (!consented)
-              Align(
-                alignment: Alignment.centerLeft,
-                child: OutlinedButton.icon(
-                  onPressed: _askConsentAndLoad,
-                  icon: const Icon(Icons.auto_awesome, size: 18),
-                  label: Text(s.summaryShow),
+              FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(48),
                 ),
+                onPressed: _askConsentAndLoad,
+                icon: const Icon(Icons.auto_awesome),
+                label: Text(s.summaryShow),
               )
             else if (_loading && summary == null)
               Row(

@@ -231,6 +231,13 @@ void main() {
     await tester.tap(find.byTooltip('가져오기'));
     await tester.pumpAndSettle();
 
+    // 받기 버튼은 결과 맨 아래에 있다.
+    await tester.dragUntilVisible(
+      find.text('전체 받기'),
+      find.byType(ListView).first,
+      const Offset(0, -200),
+    );
+    await tester.pumpAndSettle();
     expect(find.text('전체 받기'), findsOneWidget);
 
     // 결과가 뜬 뒤 다시 입력창을 만져 키보드가 올라온 상태를 만든다.

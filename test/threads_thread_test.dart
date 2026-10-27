@@ -302,7 +302,7 @@ void main() {
     await tester.pump();
     expect(find.text('댓글 사진'), findsOneWidget);
   });
-  testWidgets('작성자 글이 하나뿐이면 카드로 크게 보여 주고, 댓글만 골라 받게 한다', (tester) async {
+  testWidgets('작성자 글이 하나뿐이면 카드로 크게 보여 주고, 받기는 맨 아래에서 한다', (tester) async {
     final thread = ThreadsClient.parseThreadPage(
       _page(selfThread: false, rootPhoto: 'https://cdn/root.jpg'),
       code: 'DdRootPost1',
@@ -328,13 +328,14 @@ void main() {
     expect(thread.authorPostCount, 1);
     expect(find.byType(PostCard), findsOneWidget);
     expect(find.textContaining('작성자 스레드'), findsNothing);
-    // 본문은 카드의 받기 버튼으로 받으므로 체크 대상은 사진 달린 댓글 하나뿐이다.
-    expect(find.text('1개 중 1개 선택'), findsOneWidget);
+    // 카드에는 받기 버튼이 없고, 본문도 댓글과 함께 맨 아래에서 골라 받는다.
+    expect(find.text('다운로드'), findsNothing);
+    expect(find.text('2개 중 2개 선택'), findsOneWidget);
     expect(find.textContaining('본문만'), findsNothing);
 
-    await tester.ensureVisible(find.text('선택 받기 (1)'));
-    await tester.tap(find.text('선택 받기 (1)'));
-    expect(picked?.map((post) => post.code), ['REPLY1']);
+    await tester.ensureVisible(find.text('선택 받기 (2)'));
+    await tester.tap(find.text('선택 받기 (2)'));
+    expect(picked?.map((post) => post.code), ['DdRootPost1', 'REPLY1']);
   });
   testWidgets('댓글 읽어주기를 누르면 댓글을 차례로 읽고, 읽는 댓글을 표시한다', (tester) async {
     final thread = ThreadsClient.parseThreadPage(_page(), code: 'DdRootPost1')!;
