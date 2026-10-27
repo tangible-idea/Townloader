@@ -16,13 +16,13 @@ class S {
       S(WidgetsBinding.instance.platformDispatcher.locale.languageCode != 'en');
 
   // ── Navigation ──
-  String get navDownload => isKo ? '다운로드' : 'Download';
+  String get navDownload => isKo ? '읽기' : 'Read';
   String get navProfile => isKo ? '프로필' : 'Profile';
   String get navDownloads => isKo ? '목록' : 'Downloads';
   String get navSettings => isKo ? '설정' : 'Settings';
 
   // ── Home ──
-  String get homeTitle => isKo ? '다운로드' : 'Download';
+  String get homeTitle => isKo ? '읽기' : 'Read';
   String get linkHint => isKo ? '링크 붙여넣기' : 'Paste link';
   String get linkSubtitle => 'Instagram & Threads';
   String get paste => isKo ? '붙여넣기' : 'Paste';

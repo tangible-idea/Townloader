@@ -58,8 +58,8 @@ class _RootShellState extends State<RootShell> {
 
     final destinations = <_Destination>[
       _Destination(
-        icon: Icons.download_outlined,
-        selectedIcon: Icons.download,
+        icon: Icons.chrome_reader_mode_outlined,
+        selectedIcon: Icons.chrome_reader_mode,
         label: s.navDownload,
       ),
       _Destination(

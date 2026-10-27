@@ -274,7 +274,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Download'), findsOneWidget);
+    expect(find.text('Read'), findsOneWidget);
     expect(find.text('Paste a link'), findsOneWidget);
     expect(find.text('Instagram & Threads'), findsOneWidget);
   });

@@ -355,23 +355,27 @@ class _SectionHeader extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
       child: Row(
         children: [
-          if (author != null) ...[
-            _Avatar(post: author, size: 20),
-            const SizedBox(width: 6),
-            Flexible(
-              child: Text(
-                '@${author.authorName}',
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.titleSmall,
-              ),
+          // 이름이 남는 폭을 다 쓰고, 원문 열기 버튼은 오른쪽 끝에 붙인다.
+          Expanded(
+            child: Row(
+              children: [
+                if (author != null) ...[
+                  _Avatar(post: author, size: 20),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      '@${author.authorName}',
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleSmall,
+                    ),
+                  ),
+                  Text('  ·  ', style: muted),
+                ],
+                Text(label, style: muted),
+              ],
             ),
-            Text('  ·  ', style: muted),
-          ],
-          Text(label, style: muted),
-          if (author != null) ...[
-            const Spacer(),
-            OpenOriginalButton(post: author, size: 18),
-          ],
+          ),
+          if (author != null) OpenOriginalButton(post: author, size: 18),
         ],
       ),
     );
