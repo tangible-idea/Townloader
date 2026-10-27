@@ -302,31 +302,32 @@ class _ThreadTreeState extends State<ThreadTree> {
           ),
         ),
         const SizedBox(height: 8),
-        Row(
-          children: [
-            if (!_singleAuthorPost) ...[
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: mainFiles == 0
-                      ? null
-                      : () => widget.onDownload(main),
-                  icon: const Icon(Icons.download_outlined, size: 18),
-                  label: Text(s.downloadMainMedia(mainFiles)),
-                ),
-              ),
-              const SizedBox(width: 8),
-            ],
-            Expanded(
-              child: FilledButton.icon(
-                onPressed: picked.isEmpty
-                    ? null
-                    : () => widget.onDownload(picked),
-                icon: const Icon(Icons.download, size: 18),
-                label: Text(s.downloadSelected(pickedFiles)),
-              ),
-            ),
-          ],
+        // 나란히 두면 영어 문구가 두 줄로 꺾이므로 위아래로 꽉 채워 쌓는다.
+        FilledButton.icon(
+          style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+          onPressed: picked.isEmpty ? null : () => widget.onDownload(picked),
+          icon: const Icon(Icons.download, size: 18),
+          label: Text(
+            s.downloadSelected(pickedFiles),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
         ),
+        if (!_singleAuthorPost) ...[
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size.fromHeight(48),
+            ),
+            onPressed: mainFiles == 0 ? null : () => widget.onDownload(main),
+            icon: const Icon(Icons.download_outlined, size: 18),
+            label: Text(
+              s.downloadMainMedia(mainFiles),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
       ],
     );
   }
