@@ -290,9 +290,7 @@ class _PlacesMapScreenState extends State<PlacesMapScreen> {
   );
 
   Future<void> _flyToInitial() {
-    if (widget.initialPlace != null) {
-      return _fitPoints([_pins[_current].point]);
-    }
+    if (widget.initialPlace != null) return _focus(_current, duration: 1600);
     final code = widget.initialLink?.code;
     if (code != null) {
       final linkPoints = [
@@ -480,10 +478,73 @@ class _PlacesMapScreenState extends State<PlacesMapScreen> {
         curve: Curves.easeOut,
       );
     }
-    _map?.flyTo(
-      CameraOptions(center: _pins[index].point, zoom: 13.5),
-      MapAnimationOptions(duration: 1200),
+    _focus(index);
+  }
+
+  /// [index] 의 장소로 날아간다. 확대 정도는 장소들이 흩어진 정도에 맞춰, 가까운 이웃
+  /// 장소 한두 곳이 함께 보일 만큼만 들어간다. 장소가 모여 있으면 깊이, 멀리 떨어져
+  /// 있으면 얕게 들어가서 카드를 넘길 때마다 지도가 들락날락하지 않는다.
+  Future<void> _focus(int index, {int duration = 1000}) async {
+    final map = _map;
+    if (map == null || index >= _pins.length) return;
+    final here = _pins[index].place;
+    final center = _pins[index].point;
+    final neighbours = _nearest(index, 2);
+
+    var zoom = 13.0;
+    if (neighbours.isNotEmpty) {
+      // 고른 장소가 가운데에 오도록 이웃을 반대편에도 비춰서 함께 맞춘다.
+      final points = [
+        center,
+        for (final other in neighbours) ...[
+          Point(coordinates: Position(other.lng, other.lat)),
+          Point(
+            coordinates: Position(
+              here.lng * 2 - other.lng,
+              here.lat * 2 - other.lat,
+            ),
+          ),
+        ],
+      ];
+      final camera = await map.cameraForCoordinatesPadding(
+        points,
+        CameraOptions(),
+        MbxEdgeInsets(top: 190, left: 48, bottom: 220, right: 48),
+        _maxFocusZoom,
+        null,
+      );
+      zoom = (camera.zoom ?? zoom).clamp(_minFocusZoom, _maxFocusZoom);
+    }
+    if (!mounted) return;
+    await map.flyTo(
+      CameraOptions(center: center, zoom: zoom),
+      MapAnimationOptions(duration: duration),
     );
+  }
+
+  /// 카드를 고를 때 이보다 더 들어가지 않는다(동네 골목이 보이는 정도).
+  static const double _maxFocusZoom = 14;
+
+  /// 아주 멀리 떨어진 장소라도 나라 하나가 보일 정도까지는 들어간다.
+  static const double _minFocusZoom = 4;
+
+  /// [index] 에서 가까운 다른 장소 [count] 곳. 같은 자리의 장소는 뺀다.
+  List<SavedPlace> _nearest(int index, int count) {
+    final here = _pins[index].place;
+    final others = [
+      for (final (i, pin) in _pins.indexed)
+        if (i != index &&
+            (pin.place.lat != here.lat || pin.place.lng != here.lng))
+          pin.place,
+    ];
+    double distance(SavedPlace p) {
+      final dLat = p.lat - here.lat;
+      final dLng = (p.lng - here.lng) * math.cos(here.lat * math.pi / 180);
+      return dLat * dLat + dLng * dLng;
+    }
+
+    others.sort((a, b) => distance(a).compareTo(distance(b)));
+    return others.take(count).toList();
   }
 
   @override
