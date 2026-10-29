@@ -1,13 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 
 import '../l10n/strings.dart';
-import '../services/download_service.dart';
 import '../services/share_intake.dart';
 import 'downloads_screen.dart';
 import 'home_screen.dart';
+import 'links_screen.dart';
 import 'profile_screen.dart';
 import 'settings_screen.dart';
 
@@ -22,7 +21,6 @@ class RootShell extends StatefulWidget {
 class _RootShellState extends State<RootShell> {
   static const int _homeIndex = 0;
   static const int _profileIndex = 1;
-  static const int _downloadsIndex = 2;
 
   int _index = _homeIndex;
 
@@ -52,9 +50,6 @@ class _RootShellState extends State<RootShell> {
   @override
   Widget build(BuildContext context) {
     final s = S.of(context);
-    final activeDownloads = context.select<DownloadService, int>(
-      (service) => service.activeCount,
-    );
 
     final destinations = <_Destination>[
       _Destination(
@@ -67,11 +62,11 @@ class _RootShellState extends State<RootShell> {
         selectedIcon: Icons.person,
         label: s.navProfile,
       ),
+      // 다운로드 목록은 Links 탭 오른쪽 위 아이콘으로 옮겼다.
       _Destination(
-        icon: Icons.list_alt_outlined,
-        selectedIcon: Icons.list_alt,
-        label: s.navDownloads,
-        badgeCount: activeDownloads,
+        icon: Icons.bookmarks_outlined,
+        selectedIcon: Icons.bookmarks,
+        label: s.navLinks,
       ),
       _Destination(
         icon: Icons.settings_outlined,
@@ -89,7 +84,7 @@ class _RootShellState extends State<RootShell> {
           onOpenDownloads: _openDownloads,
         ),
         ProfileScreen(key: _profileKey, onOpenDownloads: _openDownloads),
-        const DownloadsScreen(),
+        const LinksScreen(),
         const SettingsScreen(),
       ],
     );
@@ -149,10 +144,7 @@ class _RootShellState extends State<RootShell> {
     });
   }
 
-  void _openDownloads() {
-    if (_index == _downloadsIndex) return;
-    setState(() => _index = _downloadsIndex);
-  }
+  void _openDownloads() => DownloadsScreen.open(context);
 
   void _openProfile(String username) {
     setState(() => _index = _profileIndex);
@@ -169,19 +161,12 @@ class _Destination {
     required this.icon,
     required this.selectedIcon,
     required this.label,
-    this.badgeCount = 0,
   });
 
   final IconData icon;
   final IconData selectedIcon;
   final String label;
 
-  /// 0보다 크면 아이콘에 진행 중 개수를 배지로 붙인다.
-  final int badgeCount;
-
-  Widget buildIcon(BuildContext context, {required bool selected}) {
-    final child = Icon(selected ? selectedIcon : icon);
-    if (badgeCount <= 0) return child;
-    return Badge.count(count: badgeCount, child: child);
-  }
+  Widget buildIcon(BuildContext context, {required bool selected}) =>
+      Icon(selected ? selectedIcon : icon);
 }

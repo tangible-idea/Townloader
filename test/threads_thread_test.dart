@@ -367,20 +367,20 @@ void main() {
       ),
     );
 
-    await tester.ensureVisible(find.text('댓글 읽어주기'));
-    await tester.tap(find.text('댓글 읽어주기'));
+    await tester.ensureVisible(find.byTooltip('댓글 읽어주기'));
+    await tester.tap(find.byTooltip('댓글 읽어주기'));
     await tester.pump();
     await tester.pump();
 
     // 첫 댓글을 읽고 있고, 버튼은 멈춤으로 바뀐다.
     expect(asked.first, '댓글 사진');
     expect(reader.current, 0);
-    expect(find.text('그만 읽기'), findsOneWidget);
+    expect(find.byTooltip('그만 읽기'), findsOneWidget);
 
-    await tester.tap(find.text('그만 읽기'));
+    await tester.tap(find.byTooltip('그만 읽기'));
     await tester.pump();
     expect(reader.isActive, isFalse);
-    expect(find.text('댓글 읽어주기'), findsOneWidget);
+    expect(find.byTooltip('댓글 읽어주기'), findsOneWidget);
   });
 }
 

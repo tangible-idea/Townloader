@@ -7,6 +7,7 @@ import '../../models/ig_post.dart';
 import '../../services/download_service.dart';
 import '../../state/settings_controller.dart';
 import '../format.dart';
+import 'comment_overlay.dart';
 import 'download_options_sheet.dart';
 import 'inline_video.dart';
 import 'network_thumb.dart';
@@ -15,13 +16,25 @@ import 'personal_use_notice.dart';
 
 /// 해석된 게시물 하나를 미리보기와 다운로드 버튼으로 보여준다.
 class PostCard extends StatelessWidget {
-  const PostCard({super.key, required this.post, this.showActions = true});
+  const PostCard({
+    super.key,
+    required this.post,
+    this.showActions = true,
+    this.overlayComments = const [],
+    this.highlightedComment,
+  });
 
   final IgPost post;
 
   /// false 면 읽기 화면용으로 본문을 다 보여 주고 받기 버튼을 뺀다.
   /// 받기는 화면 맨 아래에서 따로 한다.
   final bool showActions;
+
+  /// 사진·영상 위에 차례로 띄울 댓글. 비어 있으면 띄우지 않는다.
+  final List<IgPost> overlayComments;
+
+  /// 읽어 주는 중인 댓글의 순번([overlayComments] 기준).
+  final int? highlightedComment;
 
   @override
   Widget build(BuildContext context) {
@@ -140,6 +153,27 @@ class PostCard extends StatelessWidget {
   }
 
   Widget _preview(BuildContext context) {
+    final media = _media(context);
+    if (overlayComments.isEmpty) return media;
+    return Stack(
+      children: [
+        media,
+        Positioned(
+          left: 12,
+          // 영상 길이 표시를 가리지 않게 오른쪽을 비운다.
+          right: 56,
+          top: 12,
+          bottom: 12,
+          child: CommentOverlay(
+            comments: overlayComments,
+            highlighted: highlightedComment,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _media(BuildContext context) {
     // 캐러셀은 가로로 넘겨 보고, 단일 항목은 크게 한 장만 보여준다.
     if (post.items.length > 1) {
       return SizedBox(

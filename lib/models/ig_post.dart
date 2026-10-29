@@ -69,6 +69,21 @@ class IgItem {
   }
 }
 
+/// 게시물에 붙은 위치 태그. 글쓴이가 직접 고른 장소라 좌표가 정확하다.
+class IgLocation {
+  const IgLocation({
+    required this.name,
+    required this.lat,
+    required this.lng,
+    this.address,
+  });
+
+  final String name;
+  final double lat;
+  final double lng;
+  final String? address;
+}
+
 /// 다운로드 대상이 되는 게시물 하나.
 class IgPost {
   IgPost({
@@ -84,6 +99,7 @@ class IgPost {
     this.viewCount,
     this.playCount,
     this.commentCount,
+    this.location,
   }) : items = List.unmodifiable(items);
 
   final String pk;
@@ -97,6 +113,7 @@ class IgPost {
   final int? viewCount;
   final int? playCount;
   final int? commentCount;
+  final IgLocation? location;
   final List<IgItem> items;
 
   IgPost copyWith({
@@ -111,6 +128,7 @@ class IgPost {
     int? viewCount,
     int? playCount,
     int? commentCount,
+    IgLocation? location,
     List<IgItem>? items,
   }) {
     return IgPost(
@@ -125,6 +143,7 @@ class IgPost {
       viewCount: viewCount ?? this.viewCount,
       playCount: playCount ?? this.playCount,
       commentCount: commentCount ?? this.commentCount,
+      location: location ?? this.location,
       items: items ?? this.items,
     );
   }

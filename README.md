@@ -71,7 +71,7 @@ flutter run --dart-define-from-file=.env.json -d <기기>
 안내가 뜹니다.
 
 `.env.json` 에 `POE_API_KEY` 도 넣으면 Threads 댓글 목록에 **댓글 읽어주기** 버튼이 생깁니다.
-Poe API 의 `ElevenLabs-v2.5-Turbo` 봇으로 댓글을 한 개씩 음성으로 만들어 차례로 읽고,
+Poe API 의 `ElevenLabs-v3` 봇으로 댓글을 한 개씩 음성으로 만들어 차례로 읽고,
 읽는 동안 다음 댓글의 음성을 미리 만들어 둡니다. 키가 없으면 버튼이 보이지 않습니다.
 Poe 포인트가 글자 수만큼 쓰이니 공개 배포본에는 키를 심지 말고 프록시를 두세요.
 

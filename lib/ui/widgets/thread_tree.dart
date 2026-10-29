@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 
 import '../../config/app_config.dart';
 import '../../data/poe_tts_client.dart';
+import '../../data/summary_client.dart';
 
 import '../../l10n/strings.dart';
 import '../../models/ig_post.dart';
+import '../../models/media_source.dart';
 import '../../models/threads_thread.dart';
 import '../../services/comment_reader.dart';
 import 'network_thumb.dart';
@@ -106,35 +108,37 @@ class _ThreadTreeState extends State<ThreadTree> {
     }
   }
 
-  /// 화면 맨 위의 읽기 도구: AI 요약과 댓글 읽어주기. 받기보다 먼저 보이게 둔다.
-  List<Widget> _readingTools(BuildContext context, int replyCount) {
-    final s = S.of(context);
-    final reader = _reader;
-    // 요약은 글이 있어야 의미가 있고, 프록시가 설정된 빌드에서만 보인다.
-    final showSummary = AppConfig.hasProxy && thread.nodes.length > 1;
-    final showReader = reader != null && replyCount > 0;
-    if (!showSummary && !showReader) return const [];
+  /// 화면 맨 위의 AI 요약. 글이 있어야 의미가 있고, 프록시가 설정된 빌드에서만 보인다.
+  List<Widget> _readingTools() {
+    if (!AppConfig.hasProxy || thread.nodes.length <= 1) return const [];
+    return [ThreadSummaryCard(thread: thread), const SizedBox(height: 16)];
+  }
 
-    return [
-      if (showSummary) ThreadSummaryCard(thread: thread),
-      if (showSummary && showReader) const SizedBox(height: 8),
-      if (showReader)
-        FilledButton.tonalIcon(
-          style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
-          onPressed: _toggleReading,
-          icon: reader.isActive
-              ? (reader.isLoading
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.stop_circle_outlined))
-              : const Icon(Icons.record_voice_over_outlined),
-          label: Text(reader.isActive ? s.stopReading : s.readReplies),
-        ),
-      const SizedBox(height: 16),
-    ];
+  /// 댓글 구역 머리글 오른쪽의 작은 읽어주기 아이콘. 읽는 동안은 멈춤 아이콘이 된다.
+  Widget? _readAloudButton(BuildContext context) {
+    final reader = _reader;
+    if (reader == null) return null;
+    final s = S.of(context);
+    final scheme = Theme.of(context).colorScheme;
+    return IconButton(
+      tooltip: reader.isActive ? s.stopReading : s.readReplies,
+      visualDensity: VisualDensity.compact,
+      isSelected: reader.isActive,
+      color: reader.isActive ? scheme.primary : scheme.onSurfaceVariant,
+      onPressed: _toggleReading,
+      icon: reader.isActive && reader.isLoading
+          ? const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : Icon(
+              reader.isActive
+                  ? Icons.stop_circle_outlined
+                  : Icons.record_voice_over_outlined,
+              size: 20,
+            ),
+    );
   }
 
   ThreadsThread get thread => widget.thread;
@@ -191,9 +195,30 @@ class _ThreadTreeState extends State<ThreadTree> {
       onToggle: node.post.hasDownloadableAssets ? () => _toggle(node) : null,
     );
 
-    final tools = _readingTools(context, replyNodes.length);
-    final repliesHeader = _SectionHeader(
-      label: s.repliesSection(replyNodes.length),
+    final tools = _readingTools();
+    final readAloud = replyNodes.isEmpty ? null : _readAloudButton(context);
+    // 댓글 요약은 댓글 구역 맨 위에 둔다. 몇 개 안 되면 직접 읽는 편이 빠르다.
+    // 하루 요약 횟수를 아끼려고 눌렀을 때만 부른다.
+    final repliesHeader = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: _SectionHeader(label: s.repliesSection(replyNodes.length)),
+            ),
+            ?readAloud,
+          ],
+        ),
+        if (AppConfig.hasProxy && replyNodes.length >= 3) ...[
+          ThreadSummaryCard(
+            thread: thread,
+            kind: SummaryKind.comments,
+            autoLoad: false,
+          ),
+          const SizedBox(height: 8),
+        ],
+      ],
     );
 
     if (_singleAuthorPost) {
@@ -202,7 +227,15 @@ class _ThreadTreeState extends State<ThreadTree> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           ...tools,
-          PostCard(post: thread.root, showActions: false),
+          PostCard(
+            post: thread.root,
+            showActions: false,
+            // 인스타그램 글은 댓글을 사진·영상 위에 차례로 띄우고, 읽는 댓글을 강조한다.
+            overlayComments: thread.root.source == MediaSource.instagram
+                ? [for (final node in replyNodes) node.post]
+                : const [],
+            highlightedComment: reading == null ? null : readingIndex,
+          ),
           if (replyNodes.isNotEmpty) ...[
             const SizedBox(height: 16),
             repliesHeader,

@@ -8,11 +8,24 @@ PODS:
     - FlutterMacOS
   - integration_test (0.0.1):
     - Flutter
+  - mapbox_maps_flutter_mobile (3.33.1):
+    - Flutter
+    - MapboxMaps (= 11.33.1)
+    - Turf (= 4.0.0)
+  - MapboxCommon (24.33.1):
+    - Turf (= 4.0.0)
+  - MapboxCoreMaps (11.33.1):
+    - MapboxCommon (= 24.33.1)
+  - MapboxMaps (11.33.1):
+    - MapboxCommon (= 24.33.1)
+    - MapboxCoreMaps (= 11.33.1)
+    - Turf (= 4.0.0)
   - path_provider_foundation (0.0.1):
     - Flutter
     - FlutterMacOS
   - share_plus (0.0.1):
     - Flutter
+  - Turf (4.0.0)
   - url_launcher_ios (0.0.1):
     - Flutter
   - video_player_avfoundation (0.0.1):
@@ -24,10 +37,18 @@ DEPENDENCIES:
   - flutter_secure_storage_darwin (from `.symlinks/plugins/flutter_secure_storage_darwin/darwin`)
   - gal (from `.symlinks/plugins/gal/darwin`)
   - integration_test (from `.symlinks/plugins/integration_test/ios`)
+  - mapbox_maps_flutter_mobile (from `.symlinks/plugins/mapbox_maps_flutter_mobile/ios`)
   - path_provider_foundation (from `.symlinks/plugins/path_provider_foundation/darwin`)
   - share_plus (from `.symlinks/plugins/share_plus/ios`)
   - url_launcher_ios (from `.symlinks/plugins/url_launcher_ios/ios`)
   - video_player_avfoundation (from `.symlinks/plugins/video_player_avfoundation/darwin`)
+
+SPEC REPOS:
+  trunk:
+    - MapboxCommon
+    - MapboxCoreMaps
+    - MapboxMaps
+    - Turf
 
 EXTERNAL SOURCES:
   Flutter:
@@ -38,6 +59,8 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/gal/darwin"
   integration_test:
     :path: ".symlinks/plugins/integration_test/ios"
+  mapbox_maps_flutter_mobile:
+    :path: ".symlinks/plugins/mapbox_maps_flutter_mobile/ios"
   path_provider_foundation:
     :path: ".symlinks/plugins/path_provider_foundation/darwin"
   share_plus:
@@ -52,11 +75,16 @@ SPEC CHECKSUMS:
   flutter_secure_storage_darwin: acdb3f316ed05a3e68f856e0353b133eec373a23
   gal: baecd024ebfd13c441269ca7404792a7152fde89
   integration_test: 4a889634ef21a45d28d50d622cf412dc6d9f586e
+  mapbox_maps_flutter_mobile: 21beb96041748154572f5af7b78e95e9637803e0
+  MapboxCommon: b74a90adf98eb35eeb627123808a9e849c86af48
+  MapboxCoreMaps: fc964f2200ecdee75168e248ff64c2eb6b840564
+  MapboxMaps: 486dd7fd3a997243eebd11eb49321bec7ba2ef37
   path_provider_foundation: bb55f6dbba17d0dccd6737fe6f7f34fbd0376880
   share_plus: 50da8cb520a8f0f65671c6c6a99b3617ed10a58a
+  Turf: c9eb11a65d96af58cac523460fd40fec5061b081
   url_launcher_ios: 7a95fa5b60cc718a708b8f2966718e93db0cef1b
   video_player_avfoundation: 3453f792138786248960ca029747fcd9f318ef52
 
 PODFILE CHECKSUM: 288656d4464589360115d6f81dd5d8f559352730
 
-COCOAPODS: 1.16.2
+COCOAPODS: 1.17.0

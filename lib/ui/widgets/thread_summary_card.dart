@@ -6,14 +6,24 @@ import '../../l10n/strings.dart';
 import '../../models/threads_thread.dart';
 import '../../state/settings_controller.dart';
 
-/// 스레드 맨 위에 두는 AI 요약 카드.
+/// 스레드 맨 위에 두는 AI 요약 카드. [kind] 가 댓글이면 댓글 구역 위에 두는 댓글 요약.
 ///
 /// 처음에는 글을 외부 AI 로 보내도 되는지 동의를 받고, 동의한 뒤로는 열 때마다 바로
-/// 요약한다. Claude 와 Poe 를 바꿔 가며 비교할 수 있다.
+/// 요약한다([autoLoad] 가 false 면 누를 때만). Claude 와 Poe 를 바꿔 가며 비교할 수 있다.
 class ThreadSummaryCard extends StatefulWidget {
-  const ThreadSummaryCard({super.key, required this.thread, this.client});
+  const ThreadSummaryCard({
+    super.key,
+    required this.thread,
+    this.kind = SummaryKind.thread,
+    this.autoLoad = true,
+    this.client,
+  });
 
   final ThreadsThread thread;
+  final SummaryKind kind;
+
+  /// 동의한 뒤에는 열자마자 요약할지. false 면 버튼을 눌러야 부른다.
+  final bool autoLoad;
 
   /// 테스트에서 주입한다. 없으면 빌드 설정의 프록시로 만든다.
   final SummaryClient? client;
@@ -34,10 +44,15 @@ class _ThreadSummaryCardState extends State<ThreadSummaryCard> {
   /// 요청이 겹치면 마지막 것만 화면에 반영한다.
   int _request = 0;
 
+  /// 요약을 부르기로 했는지. [ThreadSummaryCard.autoLoad] 가 아니면 누른 뒤에 true.
+  late bool _requested = widget.autoLoad;
+
+  bool get _consented => context.read<SettingsController>().aiSummaryConsented;
+
   @override
   void initState() {
     super.initState();
-    if (context.read<SettingsController>().aiSummaryConsented) {
+    if (_requested && _consented) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _load());
     }
   }
@@ -48,7 +63,8 @@ class _ThreadSummaryCardState extends State<ThreadSummaryCard> {
     if (!identical(oldWidget.thread, widget.thread)) {
       _summaries.clear();
       _error = null;
-      if (context.read<SettingsController>().aiSummaryConsented) _load();
+      _requested = widget.autoLoad;
+      if (_requested && _consented) _load();
     }
   }
 
@@ -74,6 +90,7 @@ class _ThreadSummaryCardState extends State<ThreadSummaryCard> {
         widget.thread,
         provider: provider,
         isKo: S.of(context).isKo,
+        kind: widget.kind,
       );
       if (!mounted || request != _request) return;
       setState(() {
@@ -87,6 +104,13 @@ class _ThreadSummaryCardState extends State<ThreadSummaryCard> {
         _loading = false;
       });
     }
+  }
+
+  /// 요약 보기 버튼. 아직 동의하지 않았으면 먼저 묻는다.
+  Future<void> _start() async {
+    if (!_consented) return _askConsentAndLoad();
+    setState(() => _requested = true);
+    await _load();
   }
 
   Future<void> _askConsentAndLoad() async {
@@ -112,13 +136,15 @@ class _ThreadSummaryCardState extends State<ThreadSummaryCard> {
     );
     if (agreed != true || !mounted) return;
     await settings.consentToAiSummary();
-    if (mounted) _load();
+    if (!mounted) return;
+    setState(() => _requested = true);
+    _load();
   }
 
   void _switchProvider(SummaryProvider provider) {
     if (provider == _provider) return;
     setState(() => _provider = provider);
-    if (context.read<SettingsController>().aiSummaryConsented) _load();
+    if (_requested && _consented) _load();
   }
 
   @override
@@ -144,7 +170,9 @@ class _ThreadSummaryCardState extends State<ThreadSummaryCard> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    s.summaryTitle,
+                    widget.kind == SummaryKind.comments
+                        ? s.commentSummaryTitle
+                        : s.summaryTitle,
                     style: theme.textTheme.titleSmall,
                   ),
                 ),
@@ -171,14 +199,18 @@ class _ThreadSummaryCardState extends State<ThreadSummaryCard> {
               ],
             ),
             const SizedBox(height: 12),
-            if (!consented)
+            if (!consented || !_requested)
               FilledButton.icon(
                 style: FilledButton.styleFrom(
                   minimumSize: const Size.fromHeight(48),
                 ),
-                onPressed: _askConsentAndLoad,
+                onPressed: _start,
                 icon: const Icon(Icons.auto_awesome),
-                label: Text(s.summaryShow),
+                label: Text(
+                  widget.kind == SummaryKind.comments
+                      ? s.commentSummaryShow
+                      : s.summaryShow,
+                ),
               )
             else if (_loading && summary == null)
               Row(
@@ -195,7 +227,13 @@ class _ThreadSummaryCardState extends State<ThreadSummaryCard> {
             else if (summary != null) ...[
               SelectableText(summary, style: theme.textTheme.bodyMedium),
               const SizedBox(height: 10),
-              Text(s.summaryNote, style: muted),
+              Text(
+                widget.kind == SummaryKind.comments &&
+                        widget.thread.hasMoreReplies
+                    ? '${s.commentSummaryPartial} ${s.summaryNote}'
+                    : s.summaryNote,
+                style: muted,
+              ),
             ] else if (_error != null)
               Row(
                 children: [

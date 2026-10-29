@@ -41,7 +41,24 @@ class MediaParser {
       viewCount: _int(json['view_count']),
       playCount: _int(json['play_count']),
       commentCount: _int(json['comment_count']),
+      location: _location(json['location']),
       items: items.where((item) => item.hasAssets).toList(),
+    );
+  }
+
+  /// 위치 태그. 이름과 좌표가 다 있어야 쓴다(좌표 없이 이름만 오는 태그도 있다).
+  static IgLocation? _location(Object? value) {
+    if (value is! Map<String, dynamic>) return null;
+    final name = (value['name'] as String?)?.trim();
+    final lat = _double(value['lat']);
+    final lng = _double(value['lng']);
+    if (name == null || name.isEmpty || lat == null || lng == null) return null;
+    final address = (value['address'] as String?)?.trim();
+    return IgLocation(
+      name: name,
+      lat: lat,
+      lng: lng,
+      address: address == null || address.isEmpty ? null : address,
     );
   }
 

@@ -10,6 +10,8 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
+import 'package:townloader/services/links_store.dart';
+import 'package:townloader/state/links_controller.dart';
 import 'package:townloader/data/hiker_client.dart';
 import 'package:townloader/data/ig_repository.dart';
 import 'package:townloader/data/ig_url.dart';
@@ -250,6 +252,13 @@ class _Env {
           ChangeNotifierProvider.value(value: downloads),
           ChangeNotifierProvider(create: (_) => ResolveController(repository)),
           ChangeNotifierProvider(create: (_) => ProfileController(repository)),
+          ChangeNotifierProvider(
+            create: (_) => LinksController(
+              store: MemoryLinksStore(),
+              resolve: repository.resolve,
+              analyze: (post, {required isKo}) async => const [],
+            )..load(isKo: true),
+          ),
         ],
         child: MaterialApp(
           debugShowCheckedModeBanner: false,
@@ -314,7 +323,6 @@ class _StoreFrame extends StatelessWidget {
   final double titleSize;
   final String subtitle;
   final Widget screen;
-
 
   @override
   Widget build(BuildContext context) {
@@ -404,7 +412,9 @@ class _PhoneMockup extends StatelessWidget {
           size: _screen,
           child: Stack(
             children: [
-              Positioned.fill(child: MediaQuery(data: media, child: screen)),
+              Positioned.fill(
+                child: MediaQuery(data: media, child: screen),
+              ),
               const Positioned(
                 top: 0,
                 left: 0,
@@ -648,10 +658,9 @@ IgPost get _carousel => IgPost(
   code: 'DchLnq8E21N',
   kind: PostKind.carousel,
   user: _user,
-  caption:
-      S.current.isKo
-          ? '돌로미티 트레킹 3일차. 구름이 걷히는 순간을 다섯 장에 담았어요.'
-          : 'Day 3 in the Dolomites. Five frames of the clouds breaking.',
+  caption: S.current.isKo
+      ? '돌로미티 트레킹 3일차. 구름이 걷히는 순간을 다섯 장에 담았어요.'
+      : 'Day 3 in the Dolomites. Five frames of the clouds breaking.',
   takenAt: DateTime(2026, 9, 14),
   likeCount: 48200,
   commentCount: 612,
@@ -665,11 +674,10 @@ IgPost get _carousel => IgPost(
 );
 
 final _gridPosts = <IgPost>[
-  for (final (index, name)
-      in [
-        'p1015', 'p1040', 'p1069', 'p1074', 'p1084', 'p110', //
-        'p1062', 'p1057', 'p1050', 'p1047', 'p1039', 'p1080',
-      ].indexed)
+  for (final (index, name) in [
+    'p1015', 'p1040', 'p1069', 'p1074', 'p1084', 'p110', //
+    'p1062', 'p1057', 'p1050', 'p1047', 'p1039', 'p1080',
+  ].indexed)
     IgPost(
       pk: '39750000000000000$index',
       code: 'DcGrid$index',
@@ -706,12 +714,11 @@ IgPost _threadPost(
   pk: '39800000000000000$index',
   code: 'DdTrek000$index',
   source: MediaSource.threads,
-  kind:
-      items.length > 1
-          ? PostKind.carousel
-          : items.any((item) => item.kind == AssetKind.video)
-          ? PostKind.video
-          : PostKind.photo,
+  kind: items.length > 1
+      ? PostKind.carousel
+      : items.any((item) => item.kind == AssetKind.video)
+      ? PostKind.video
+      : PostKind.photo,
   user: user,
   caption: caption,
   takenAt: DateTime(2026, 9, 21),

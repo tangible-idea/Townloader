@@ -3,7 +3,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
-/// Poe API 로 ElevenLabs Turbo 음성을 만든다.
+/// Poe API 로 ElevenLabs v3 음성을 만든다.
 ///
 /// Poe 는 OpenAI 호환 `chat/completions` 로 봇을 부른다. 음성 봇은 글로 된 답 대신
 /// 만들어진 오디오 파일의 주소를 메시지 안에 실어 돌려주므로, 그 주소를 꺼내 쓴다.
@@ -18,8 +18,8 @@ class PoeTtsClient {
     'https://api.poe.com/v1/chat/completions',
   );
 
-  /// Poe 의 봇 이름. Turbo v2.5 는 빠르고 한국어도 읽는다.
-  static const String model = 'ElevenLabs-v2.5-Turbo';
+  /// Poe 의 봇 이름. v3 는 Turbo v2.5 보다 억양이 자연스럽고 한국어도 읽는다.
+  static const String model = 'ElevenLabs-v3';
 
   static const Duration timeout = Duration(seconds: 60);
 

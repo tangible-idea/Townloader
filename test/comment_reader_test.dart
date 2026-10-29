@@ -36,7 +36,7 @@ class _FakePlayback implements AudioPlayback {
 
 void main() {
   group('PoeTtsClient', () {
-    test('ElevenLabs Turbo 봇을 OpenAI 호환 형식으로 부른다', () async {
+    test('ElevenLabs v3 봇을 OpenAI 호환 형식으로 부른다', () async {
       late http.Request sent;
       final client = PoeTtsClient(
         apiKey: 'poe-key',
@@ -62,7 +62,7 @@ void main() {
       expect(sent.url.toString(), 'https://api.poe.com/v1/chat/completions');
       expect(sent.headers['authorization'], 'Bearer poe-key');
       final body = jsonDecode(sent.body) as Map<String, dynamic>;
-      expect(body['model'], 'ElevenLabs-v2.5-Turbo');
+      expect(body['model'], 'ElevenLabs-v3');
       expect(body['messages'], [
         {'role': 'user', 'content': '안녕하세요'},
       ]);
@@ -72,7 +72,7 @@ void main() {
     test('실제 Poe 응답(확장자 없는 오디오 주소 하나)을 그대로 쓴다', () {
       // 2026-10-07 실제 호출 결과와 같은 모양. 주소에 확장자가 없지만 mp3 다.
       const body =
-          '{"id":"x","object":"chat.completion","model":"ElevenLabs-v2.5-Turbo",'
+          '{"id":"x","object":"chat.completion","model":"ElevenLabs-v3",'
           '"choices":[{"index":0,"message":{"role":"assistant","content":'
           '"https://pfst.cf2.poecdn.net/base/audio/beaab3d9a32ee57d"},'
           '"finish_reason":"stop"}],'

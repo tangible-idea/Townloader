@@ -33,4 +33,10 @@ class AppConfig {
   static const String proxyAppToken = String.fromEnvironment('PROXY_APP_TOKEN');
 
   static bool get hasProxy => proxyUrl.isNotEmpty;
+
+  /// Mapbox 공개 토큰(`pk.`). 저장한 글을 지구본에 띄우는 데 쓴다. 공개 토큰은 앱에
+  /// 들어가도 되는 값이지만, Mapbox 계정에서 사용 범위를 제한해 두는 편이 좋다.
+  static const String mapboxToken = String.fromEnvironment('MAPBOX_TOKEN');
+
+  static bool get hasMapbox => mapboxToken.isNotEmpty;
 }

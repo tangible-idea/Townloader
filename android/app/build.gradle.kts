@@ -60,3 +60,8 @@ android {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // 사진 글자 읽기(한국어). 모델은 Play 서비스가 받아 와서 APK 가 커지지 않는다.
+    implementation("com.google.android.gms:play-services-mlkit-text-recognition-korean:16.0.2")
+}

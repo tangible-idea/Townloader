@@ -16,6 +16,24 @@ import 'widgets/state_views.dart';
 class DownloadsScreen extends StatelessWidget {
   const DownloadsScreen({super.key});
 
+  /// Links 탭 위로 띄운다. 이미 떠 있으면 다시 쌓지 않는다.
+  static Future<void> open(BuildContext context) async {
+    var alreadyOpen = false;
+    Navigator.of(context).popUntil((route) {
+      alreadyOpen = route.settings.name == routeName;
+      return true;
+    });
+    if (alreadyOpen) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        settings: const RouteSettings(name: routeName),
+        builder: (_) => const DownloadsScreen(),
+      ),
+    );
+  }
+
+  static const routeName = '/downloads';
+
   @override
   Widget build(BuildContext context) {
     final s = S.of(context);

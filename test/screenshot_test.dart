@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
+import 'package:townloader/services/links_store.dart';
+import 'package:townloader/state/links_controller.dart';
 import 'package:townloader/data/hiker_client.dart';
 import 'package:townloader/data/ig_repository.dart';
 import 'package:townloader/models/ig_asset.dart';
@@ -37,7 +39,8 @@ void main() {
 
     // 아이콘도 폰트라서 따로 올리지 않으면 전부 빈 네모로 그려진다.
     final flutterRoot =
-        Platform.environment['FLUTTER_ROOT'] ?? '/Users/markchoi/Documents/flutter';
+        Platform.environment['FLUTTER_ROOT'] ??
+        '/Users/markchoi/Documents/flutter';
     await _loadFamily('MaterialIcons', [
       '$flutterRoot/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf',
     ]);
@@ -165,6 +168,13 @@ Widget _app(Widget child, {bool dark = false}) {
       ChangeNotifierProvider.value(value: DownloadService(settings: store)),
       ChangeNotifierProvider.value(value: ResolveController(repository)),
       ChangeNotifierProvider.value(value: ProfileController(repository)),
+      ChangeNotifierProvider(
+        create: (_) => LinksController(
+          store: MemoryLinksStore(),
+          resolve: repository.resolve,
+          analyze: (post, {required isKo}) async => const [],
+        )..load(isKo: true),
+      ),
     ],
     child: MaterialApp(
       debugShowCheckedModeBanner: false,
@@ -238,7 +248,8 @@ final _reel = IgPost(
   code: 'DcMXl1IPNtB',
   kind: PostKind.reel,
   user: _nasa,
-  caption: '아르테미스 II 발사 준비가 마무리 단계에 들어섰습니다. '
+  caption:
+      '아르테미스 II 발사 준비가 마무리 단계에 들어섰습니다. '
       '50년 만에 다시 달로 향하는 유인 비행입니다.',
   takenAt: DateTime(2026, 8, 20),
   likeCount: 1204000,

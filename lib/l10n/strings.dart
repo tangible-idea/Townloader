@@ -19,7 +19,49 @@ class S {
   String get navDownload => isKo ? '읽기' : 'Read';
   String get navProfile => isKo ? '프로필' : 'Profile';
   String get navDownloads => isKo ? '목록' : 'Downloads';
+  String get navLinks => isKo ? '링크' : 'Links';
   String get navSettings => isKo ? '설정' : 'Settings';
+
+  // ── Links ──
+  String get linksTitle => isKo ? '링크' : 'Links';
+  String get linksHint => isKo
+      ? '인스타그램 링크를 붙여넣으세요 (여러 개도 돼요)'
+      : 'Paste Instagram links (several at once is fine)';
+  String get linksSave => isKo ? '저장' : 'Save';
+  String linksSaved(int count, String category) =>
+      isKo ? '$category에 $count개 저장했어요' : 'Saved $count to $category';
+  String linksSkipped(int duplicates, int unsupported) => [
+    if (duplicates > 0) isKo ? '이미 저장한 링크 $duplicates개' : '$duplicates already saved',
+    if (unsupported > 0)
+      isKo ? '게시물이 아닌 링크 $unsupported개' : '$unsupported not posts',
+  ].join(isKo ? ', ' : ', ');
+  String get linksNoneFound =>
+      isKo ? '인스타그램 게시물 링크를 찾지 못했어요' : 'No Instagram post links found';
+  String get linksEmptyTitle =>
+      isKo ? '저장한 링크가 없어요' : 'No saved links yet';
+  String get linksEmptyDesc => isKo
+      ? '여행지나 맛집 글의 링크를 붙여넣으면 장소를 찾아 모아 둬요'
+      : 'Paste links to travel or food posts and their places are collected here';
+  String get linksAnalyzing => isKo ? '장소 찾는 중…' : 'Finding places…';
+  String linksPlaceCount(int count) =>
+      isKo ? '장소 $count곳' : (count == 1 ? '1 place' : '$count places');
+  String get linksNoPlaces =>
+      isKo ? '글에서 장소를 찾지 못했어요' : 'No places found in this post';
+  String get linksRetry => isKo ? '다시 찾기' : 'Retry';
+  String get linksDelete => isKo ? '삭제' : 'Delete';
+  String get linksMove => isKo ? '카테고리 옮기기' : 'Move to category';
+  String get linksNewCategory => isKo ? '새 카테고리' : 'New category';
+  String get linksCategoryHint => isKo ? '예: 제주 여행' : 'e.g. Tokyo trip';
+  String get linksAdd => isKo ? '만들기' : 'Create';
+  String get linksApproximate => isKo ? '대략적인 위치' : 'Approximate';
+  String get downloadHistory => isKo ? '다운로드 목록' : 'Downloads';
+  String get mapOpen => isKo ? '지도로 보기' : 'Show on map';
+  String get mapShowAll => isKo ? '전체 보기' : 'Show all';
+  String get mapAll => isKo ? '모든 장소' : 'All places';
+  String get mapNoPlaces =>
+      isKo ? '이 카테고리에는 아직 찾은 장소가 없어요' : 'No places in this category yet';
+  String get mapUnavailable =>
+      isKo ? '이 빌드에는 지도 키가 없어요' : 'This build has no map key';
 
   // ── Home ──
   String get homeTitle => isKo ? '읽기' : 'Read';
@@ -63,6 +105,12 @@ class S {
   // ── 스레드 요약 ──
   String get summaryTitle => isKo ? 'AI 요약' : 'AI summary';
   String get summaryShow => isKo ? '요약 보기' : 'Show summary';
+  String get commentSummaryTitle => isKo ? '댓글 요약' : 'Reply summary';
+  String get commentSummaryShow =>
+      isKo ? '댓글 요약 보기' : 'Summarize replies';
+  String get commentSummaryPartial => isKo
+      ? '불러온 앞부분 댓글만 요약했어요.'
+      : 'Only the replies loaded so far are summarized.';
   String get summaryLoading => isKo ? '요약하는 중…' : 'Summarizing…';
   String get summaryFailed =>
       isKo ? '요약을 만들지 못했습니다.' : "Couldn't create a summary.";

@@ -94,6 +94,8 @@ void main() {
     WidgetTester tester, {
     required bool consent,
     int status = 200,
+    SummaryKind kind = SummaryKind.thread,
+    bool autoLoad = true,
   }) async {
     final settings = SettingsController(_ConsentStore(consent: consent));
     await settings.load();
@@ -104,6 +106,8 @@ void main() {
           home: Scaffold(
             body: ThreadSummaryCard(
               thread: _thread,
+              kind: kind,
+              autoLoad: autoLoad,
               client: client(status: status),
             ),
           ),
@@ -132,6 +136,7 @@ void main() {
 
     final sent = requests.single;
     expect(sent['id'], 'threads-Root1');
+    expect(sent['kind'], 'thread');
     expect(sent['posts'], [
       {'author': 'author', 'text': '(1/2) first', 'byAuthor': true},
       {'author': 'author', 'text': '(2/2) second', 'byAuthor': true},
@@ -158,5 +163,26 @@ void main() {
     await pump(tester, consent: true, status: 429);
     expect(find.textContaining('limit'), findsOneWidget);
     expect(find.text('Try again'), findsNothing);
+  });
+
+  testWidgets('댓글 요약은 동의했어도 누를 때만 부르고, 댓글 요약으로 보낸다', (tester) async {
+    await pump(
+      tester,
+      consent: true,
+      kind: SummaryKind.comments,
+      autoLoad: false,
+    );
+    expect(find.text('Reply summary'), findsOneWidget);
+    expect(requests, isEmpty);
+
+    await tester.tap(find.text('Summarize replies'));
+    await tester.pumpAndSettle();
+    expect(find.text('summary from claude'), findsOneWidget);
+    expect(requests.single['kind'], 'comments');
+
+    // 누른 뒤에는 공급자를 바꾸면 바로 부른다.
+    await tester.tap(find.text('Poe'));
+    await tester.pumpAndSettle();
+    expect(requests.map((r) => r['provider']), ['claude', 'poe']);
   });
 }

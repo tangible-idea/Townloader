@@ -1,0 +1,24 @@
+# Worker 비밀값 예시. `cp .dev.vars.example .dev.vars` 로 복사해 값을 채우면
+# `npm run dev`(wrangler dev) 가 읽는다. .dev.vars 는 git 에 올라가지 않는다.
+# 배포할 때는 같은 이름으로 `npx wrangler secret put <이름>` 을 실행한다.
+
+# 앱이 x-app-token 헤더로 보내는 값. 앱 .env.json 의 PROXY_APP_TOKEN 과 같아야 한다.
+APP_TOKEN=any-long-random-string
+
+# 스레드·댓글 요약 (Claude)
+ANTHROPIC_API_KEY=sk-ant-...
+
+# 스레드·댓글 요약 (Poe), 본문에서 장소 뽑기
+POE_API_KEY=...
+
+# 인스타그램 조회 (/hiker/*)
+HIKER_API_KEY=...
+
+# OCR 한 줄이 장소 이름인지 고르기 (Jev) — https://console.typesafe.ai
+TYPESAFE_API_KEY=...
+
+# 장소 이름·주소 → 좌표 (카카오 로컬 검색) — developers.kakao.com › 내 애플리케이션 › 앱 키 › REST API 키
+KAKAO_REST_KEY=...
+
+# 카카오에서 못 찾은 해외 장소 → 좌표 (Mapbox 검색). 앱 .env.json 의 MAPBOX_TOKEN(pk.) 과 같은 값이면 된다.
+MAPBOX_TOKEN=pk....

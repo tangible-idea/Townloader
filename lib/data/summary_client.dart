@@ -17,6 +17,15 @@ enum SummaryProvider {
   final String label;
 }
 
+/// 무엇을 요약할지.
+enum SummaryKind {
+  /// 작성자의 글을 중심으로 스레드 전체를.
+  thread,
+
+  /// 댓글만. 작성자의 글은 댓글이 무엇에 대한 것인지 알려 주는 데만 쓴다.
+  comments,
+}
+
 class SummaryException implements Exception {
   SummaryException({this.rateLimited = false});
 
@@ -41,10 +50,12 @@ class SummaryClient {
     ThreadsThread thread, {
     required SummaryProvider provider,
     required bool isKo,
+    SummaryKind kind = SummaryKind.thread,
   }) async {
     final root = thread.root;
     final body = {
       'provider': provider.name,
+      'kind': kind.name,
       'id': '${root.source.name}-${root.code ?? root.pk}',
       'lang': isKo ? 'ko' : 'en',
       'posts': [
