@@ -100,6 +100,11 @@ async function route(request: Request, env: Env): Promise<Response> {
     );
   }
 
+  const placeDetail = /^\/api\/place\/(\d{3,20})$/.exec(path);
+  if (method === "GET" && placeDetail) {
+    return handlePlaceDetail(placeDetail[1]);
+  }
+
   if (path === "/api/session" && method === "POST") return signIn(request, env);
 
   if (!path.startsWith("/api/")) return json({ error: "not_found" }, 404);
@@ -249,6 +254,7 @@ interface SavedLink {
     placeUrl?: string | null;
     rating?: number | null;
     reviewCount?: number | null;
+    summary?: string | null;
     approximate?: boolean;
     imageIndex?: number | null;
   }[];
@@ -326,8 +332,10 @@ export interface PublicPlace {
   category?: string | null;
   phone?: string | null;
   placeUrl?: string | null;
+  kakaoId?: string | null;
   rating?: number | null;
   reviewCount?: number | null;
+  summary?: string | null;
   lat: number;
   lng: number;
   approximate: boolean;
@@ -392,10 +400,22 @@ async function publicMap(env: Env, id: string): Promise<PublicMap | null> {
   if (!row) return null;
 
   const data: LinksData = row.data ? JSON.parse(row.data) : { categories: [], links: [] };
+  const isPostShare = row.category.startsWith("post:");
+  const targetCode = isPostShare ? row.category.slice("post:".length) : null;
+  const matchedLinks = (data.links ?? []).filter((link) =>
+    isPostShare ? link.code === targetCode : link.category === row.category,
+  );
+  if (isPostShare && matchedLinks.length === 0) return null;
+
+  const firstLink = matchedLinks[0];
+  const displayCategory = isPostShare
+    ? firstLink?.title ||
+      (firstLink?.author ? `@${firstLink.author}` : firstLink?.category || "Townloader")
+    : row.category;
+
   const posts: PublicPost[] = [];
   const places: PublicPlace[] = [];
-  for (const link of data.links ?? []) {
-    if (link.category !== row.category) continue;
+  for (const link of matchedLinks) {
     if (!/^https:\/\/(www\.)?instagram\.com\//.test(link.url)) continue;
     const coverUrl = photoUrl(link.coverUrl);
     const imageUrls = (link.imageUrls ?? []).map(photoUrl).filter((url): url is string => !!url);
@@ -408,23 +428,48 @@ async function publicMap(env: Env, id: string): Promise<PublicMap | null> {
       imageUrls,
       places: [],
     };
-    for (const place of link.places ?? []) {
-      if (typeof place.lat !== "number" || typeof place.lng !== "number") continue;
+    const enrichedPlaces = await Promise.all(
+      (link.places ?? []).map(async (place) => {
+        if (typeof place.lat !== "number" || typeof place.lng !== "number") return null;
+        if (!place.photoUrl && !place.category && !place.placeUrl && !place.approximate) {
+          const hit = await searchKakaoPlace(place.name, place.address ?? null);
+          if (hit) {
+            return {
+              ...place,
+              address: place.address ?? hit.address,
+              category: hit.category,
+              phone: hit.phone,
+              photoUrl: hit.photoUrl,
+              placeUrl: hit.placeUrl,
+              rating: hit.rating,
+              reviewCount: hit.reviewCount,
+            };
+          }
+        }
+        return place;
+      }),
+    );
+    for (const place of enrichedPlaces) {
+      if (!place) continue;
       const index = place.imageIndex;
       const slidePhoto =
         typeof index === "number" && index >= 0 && index < (link.imageUrls?.length ?? 0)
           ? photoUrl(link.imageUrls![index])
           : null;
       const kakaoPhoto = photoUrl(place.photoUrl);
+      const placeUrl = typeof place.placeUrl === "string" ? place.placeUrl : null;
+      const idMatch = placeUrl ? /place\.map\.kakao\.com\/(\d+)/.exec(placeUrl) : null;
       post.places.push(places.length);
       places.push({
         name: String(place.name ?? ""),
         address: place.address ?? null,
         category: place.category ?? null,
         phone: place.phone ?? null,
-        placeUrl: place.placeUrl ?? null,
+        placeUrl,
+        kakaoId: idMatch ? idMatch[1] : null,
         rating: typeof place.rating === "number" ? place.rating : null,
         reviewCount: typeof place.reviewCount === "number" ? place.reviewCount : null,
+        summary: typeof place.summary === "string" ? place.summary : null,
         lat: place.lat,
         lng: place.lng,
         approximate: place.approximate === true,
@@ -437,7 +482,212 @@ async function publicMap(env: Env, id: string): Promise<PublicMap | null> {
     // 장소를 못 찾은 글도 목록에는 보여 준다.
     posts.push(post);
   }
-  return { id, category: row.category, updatedAt: row.updated_at ?? 0, posts, places };
+  return { id, category: displayCategory, updatedAt: row.updated_at ?? 0, posts, places };
+}
+
+// ── 카카오맵 장소 검색 · 상세 패널 프록시 ────────────────────────────────────
+
+function kakaoThumb(rawUrl: unknown): string | null {
+  if (typeof rawUrl !== "string" || !rawUrl.trim()) return null;
+  const httpsUrl = rawUrl.trim().replace(/^http:\/\//, "https://");
+  return `https://img1.kakaocdn.net/cthumb/local/R400x0/?fname=${encodeURIComponent(httpsUrl)}`;
+}
+
+async function searchKakaoPlace(name: string, address: string | null) {
+  try {
+    const words = String(name ?? "").trim().split(/\s+/).filter(Boolean);
+    const variants: string[] = [];
+    for (let n = words.length; n >= 1; n--) {
+      const q = words.slice(0, n).join(" ");
+      if (q.replace(/\s/g, "").length >= 2) variants.push(q);
+    }
+    const area = (address ?? "")
+      .split(/\s+/)
+      .filter((w) => /(동|읍|면|리|가|구|군)$/.test(w) || /동\d*가$/.test(w))
+      .reverse();
+    const norm = (s: string) => s.toLowerCase().replace(/[\s\p{P}\p{S}]/gu, "");
+    for (const q of variants) {
+      const url =
+        "https://search.map.kakao.com/mapsearch/map.daum?callback=j&msFlag=A&sort=0&q=" +
+        encodeURIComponent(q);
+      const res = await fetch(url, {
+        headers: { referer: "https://map.kakao.com/", "user-agent": "Mozilla/5.0" },
+      });
+      if (!res.ok) continue;
+      const text = await res.text();
+      const s = text.indexOf("(");
+      const e = text.lastIndexOf(")");
+      if (s < 0 || e <= s) continue;
+      const parsed = JSON.parse(text.slice(s + 1, e)) as { place?: Record<string, any>[] };
+      for (const p of parsed.place ?? []) {
+        const a = norm(q);
+        const b = norm(String(p.name ?? ""));
+        if (!a || !b || (!a.includes(b) && !b.includes(a))) continue;
+        const fullAddr = `${p.address ?? ""} ${p.new_address ?? ""}`;
+        if (area.length > 0 && !area.some((t) => fullAddr.includes(t))) continue;
+        const rawImg =
+          p.img ||
+          (Array.isArray(p.image_info?.image_main_urls) ? p.image_info.image_main_urls[0] : null);
+        const rating = Number(p.rating_average);
+        const reviews = Number(p.reviewCount) || Number(p.rating_count);
+        const cid = String(p.confirmid ?? "").trim();
+        return {
+          address: String(p.new_address || p.address || "").trim() || null,
+          category: String(p.last_cate_name || p.cate_name_depth2 || "").trim() || null,
+          phone: String(p.tel || "").trim() || null,
+          photoUrl: kakaoThumb(rawImg),
+          placeUrl: cid ? `https://place.map.kakao.com/${cid}` : null,
+          rating: Number.isFinite(rating) && rating > 0 ? rating : null,
+          reviewCount: Number.isFinite(reviews) && reviews > 0 ? reviews : null,
+        };
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function handlePlaceDetail(confirmId: string): Promise<Response> {
+  try {
+    const res = await fetch(`https://place-api.map.kakao.com/places/panel3/${confirmId}`, {
+      headers: {
+        referer: `https://place.map.kakao.com/${confirmId}`,
+        "user-agent": "Mozilla/5.0",
+        accept: "application/json",
+        pf: "web",
+      },
+    });
+    if (!res.ok) return json({ error: "upstream_error" }, 502);
+    const raw = (await res.json()) as Record<string, any>;
+    const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
+
+    const aiMate = raw.ai_mate ?? {};
+    const aiTitle = str(aiMate.summary?.title) ?? str(aiMate.bottom_sheet?.title);
+    const aiSummary = str(aiMate.bottom_sheet?.summary);
+    const priceLevel = str(aiMate.price_level?.symbol);
+    const aiKeywords: string[] = [];
+    for (const g of Array.isArray(aiMate.blog_summaries) ? aiMate.blog_summaries : []) {
+      for (const kw of Array.isArray(g?.keywords) ? g.keywords : []) {
+        const k = str(kw);
+        if (k && !aiKeywords.includes(k)) aiKeywords.push(k);
+      }
+    }
+
+    const hours = raw.open_hours ?? {};
+    const openParts = [
+      str(hours.headline?.display_text),
+      str(hours.headline?.display_text_info),
+    ].filter(Boolean);
+    const openStatus = openParts.length > 0 ? openParts.join(" · ") : null;
+    const openHours: string[] = [];
+    for (const period of Array.isArray(hours.week_from_today?.week_periods)
+      ? hours.week_from_today.week_periods
+      : []) {
+      for (const day of Array.isArray(period?.days) ? period.days : []) {
+        const label = str(day?.day_of_the_week_desc);
+        if (!label) continue;
+        const time = str(day?.on_days?.start_end_time_desc) ?? str(day?.off_days_desc) ?? "휴무";
+        const lastOrder = Array.isArray(day?.on_days?.last_order_times_desc)
+          ? str(day.on_days.last_order_times_desc[0])
+          : null;
+        openHours.push([label, time, lastOrder ? `(${lastOrder})` : null].filter(Boolean).join(" "));
+      }
+    }
+
+    const photos: string[] = [];
+    for (const item of (Array.isArray(raw.photos?.photos) ? raw.photos.photos : []).slice(0, 10)) {
+      const thumb = kakaoThumb(item?.url);
+      if (thumb && !photos.includes(thumb)) photos.push(thumb);
+    }
+
+    const menus = (Array.isArray(raw.menu?.menus?.items) ? raw.menu.menus.items : [])
+      .slice(0, 8)
+      .map((m: any) => ({
+        name: str(m?.name),
+        price: Number.isFinite(Number(m?.price)) ? Number(m.price) : null,
+        description: str(m?.desc),
+        recommend: m?.is_recommend === true,
+      }))
+      .filter((m: any) => m.name);
+
+    const tags = (Array.isArray(raw.place_add_info?.tags) ? raw.place_add_info.tags : [])
+      .slice(0, 10)
+      .map(str)
+      .filter(Boolean);
+
+    const kRev = raw.kakaomap_review ?? {};
+    const descById = new Map<number, string>();
+    for (const d of Array.isArray(kRev.strength_description) ? kRev.strength_description : []) {
+      const id = Number(d?.id);
+      const name = str(d?.name);
+      if (Number.isFinite(id) && name) descById.set(id, name);
+    }
+    const strengths = (Array.isArray(kRev.score_set?.strength_counts)
+      ? kRev.score_set.strength_counts
+      : []
+    )
+      .map((c: any) => ({
+        name: descById.get(Number(c?.id)) ?? null,
+        count: Number(c?.count) || 0,
+      }))
+      .filter((s: any) => s.name && s.count > 0);
+
+    const visitorReviews = (Array.isArray(kRev.reviews) ? kRev.reviews : [])
+      .slice(0, 10)
+      .map((r: any) => ({
+        author: str(r?.meta?.owner?.nickname) ?? "방문자",
+        rating: Number(r?.star_rating) || 5,
+        contents: str(r?.contents),
+        date: str(r?.registered_at)?.slice(0, 10) ?? null,
+        photos: (Array.isArray(r?.photos) ? r.photos : [])
+          .slice(0, 4)
+          .map((p: any) => kakaoThumb(p?.url))
+          .filter(Boolean),
+      }))
+      .filter((r: any) => r.contents);
+
+    const blogReviews = (Array.isArray(raw.blog_review?.reviews) ? raw.blog_review.reviews : [])
+      .slice(0, 8)
+      .map((b: any) => ({
+        title: str(b?.title) ?? "",
+        contents: str(b?.contents) ?? "",
+        author: str(b?.author) ?? "블로그",
+        date: str(b?.registered_at)?.slice(0, 10) ?? null,
+        url: str(b?.origin_url),
+        photos: (Array.isArray(b?.photos) ? b.photos : [])
+          .slice(0, 4)
+          .map((p: any) => kakaoThumb(p?.url))
+          .filter(Boolean),
+      }))
+      .filter((b: any) => b.title || b.contents);
+
+    return new Response(
+      JSON.stringify({
+        aiTitle,
+        aiSummary,
+        aiKeywords,
+        priceLevel,
+        openStatus,
+        openHours,
+        photos,
+        menus,
+        tags,
+        strengths,
+        visitorReviews,
+        blogReviews,
+      }),
+      {
+        status: 200,
+        headers: {
+          "content-type": "application/json; charset=utf-8",
+          "cache-control": "public, max-age=21600",
+        },
+      },
+    );
+  } catch {
+    return json({ error: "upstream_error" }, 502);
+  }
 }
 
 // ── 딥링크 검증 파일 ────────────────────────────────────────────────────────

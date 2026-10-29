@@ -94,21 +94,24 @@ class _TownloaderAppState extends State<TownloaderApp> {
         ChangeNotifierProvider(create: (_) => ResolveController(_repository)),
         ChangeNotifierProvider(create: (_) => ProfileController(_repository)),
       ],
-      child: MaterialApp(
-        title: 'Townloader',
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.light(),
-        darkTheme: AppTheme.dark(),
-        localizationsDelegates: const [
-          GlobalMaterialLocalizations.delegate,
-          GlobalWidgetsLocalizations.delegate,
-          GlobalCupertinoLocalizations.delegate,
-        ],
-        supportedLocales: const [
-          Locale('ko'),
-          Locale('en'),
-        ],
-        home: const RootShell(),
+      child: Consumer<SettingsController>(
+        builder: (context, settings, _) => MaterialApp(
+          title: 'Townloader',
+          debugShowCheckedModeBanner: false,
+          theme: AppTheme.light(),
+          darkTheme: AppTheme.dark(),
+          locale: settings.locale,
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: const [
+            Locale('ko'),
+            Locale('en'),
+          ],
+          home: const RootShell(),
+        ),
       ),
     );
   }

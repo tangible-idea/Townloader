@@ -5,15 +5,23 @@ class S {
   final bool isKo;
   const S(this.isKo);
 
+  static String? overrideLanguageCode;
+
   static S of(BuildContext context) {
-    final code = Localizations.maybeLocaleOf(context)?.languageCode;
+    final code =
+        overrideLanguageCode ??
+        Localizations.maybeLocaleOf(context)?.languageCode;
     return S(code != 'en');
   }
 
-  /// 위젯 트리 밖(데이터·서비스 계층)에서 쓰는 문구. 기기 언어를 보고 [of] 와 같은
-  /// 규칙(영어가 아니면 한국어)으로 고르므로 화면과 언어가 어긋나지 않는다.
-  static S get current =>
-      S(WidgetsBinding.instance.platformDispatcher.locale.languageCode != 'en');
+  /// 위젯 트리 밖(데이터·서비스 계층)에서 쓰는 문구. 사용자가 고른 언어가 있으면 그것을,
+  /// 없으면 기기 언어를 보고 [of] 와 같은 규칙(영어가 아니면 한국어)으로 고른다.
+  static S get current {
+    final code =
+        overrideLanguageCode ??
+        WidgetsBinding.instance.platformDispatcher.locale.languageCode;
+    return S(code != 'en');
+  }
 
   // ── Navigation ──
   String get navDownload => isKo ? '읽기' : 'Read';
@@ -241,11 +249,16 @@ class S {
   String get shareMapBody => isKo
       ? '공유하면 이 카테고리가 공개로 바뀌어요. 링크를 받은 사람은 누구나 저장한 글의 제목, 사진, 캡션(해시태그 제외), 장소, 인스타그램 원문 링크를 볼 수 있어요.'
       : 'Sharing makes this category public. Anyone with the link can see each saved post\'s title, photos, caption (without hashtags), places and a link to the Instagram post.';
+  String get sharePostBody => isKo
+      ? '공유하면 이 항목의 지도가 공개로 바뀌어요. 링크를 받은 사람은 누구나 이 글의 제목, 사진, 캡션(해시태그 제외), 장소, 인스타그램 원문 링크를 볼 수 있어요.'
+      : 'Sharing makes a public map for this post. Anyone with the link can see its title, photos, caption (without hashtags), places and a link to the Instagram post.';
   String get shareMapNeedsSignIn => isKo
       ? '지도를 공유하려면 설정에서 먼저 로그인해 주세요.'
       : 'Sign in from Settings to share a map.';
   String get shareMapAction => isKo ? '공개하고 공유' : 'Make public and share';
   String get sharePublicLabel => isKo ? '공개 중' : 'Public';
+  String get shareOpenInBrowser =>
+      isKo ? '브라우저로 열기' : 'Open in browser';
   String get shareLinkAgain => isKo ? '링크 다시 보내기' : 'Send link again';
   String get shareStop => isKo ? '공개 중지' : 'Stop sharing';
   String get shareStopped => isKo ? '다시 비공개로 바꿨어요' : 'This map is private again';
@@ -253,6 +266,10 @@ class S {
 
   // ── Settings ──
   String get settingsTitle => isKo ? '설정' : 'Settings';
+  String get languageSection => isKo ? '언어' : 'Language';
+  String get languageSystem => isKo ? '기기 설정 따르기' : 'System default';
+  String get languageKorean => '한국어';
+  String get languageEnglish => 'English';
   String get qualitySection => isKo ? '화질' : 'Quality';
   String get qualityBest => isKo ? '최고 화질' : 'Best';
   String get qualityBestSub => isKo ? '원본 해상도' : 'Original resolution';

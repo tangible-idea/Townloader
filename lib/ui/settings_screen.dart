@@ -33,6 +33,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 _sectionTitle(context, s.accountSection),
                 const AccountCard(),
                 const SizedBox(height: 16),
+                _sectionTitle(context, s.languageSection),
+                Card(
+                  child: RadioGroup<String?>(
+                    groupValue: settings.languageCode,
+                    onChanged: settings.setLanguage,
+                    child: Column(
+                      children: [
+                        RadioListTile<String?>(
+                          value: null,
+                          title: Text(s.languageSystem),
+                        ),
+                        RadioListTile<String?>(
+                          value: 'ko',
+                          title: Text(s.languageKorean),
+                        ),
+                        RadioListTile<String?>(
+                          value: 'en',
+                          title: Text(s.languageEnglish),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
                 _sectionTitle(context, s.qualitySection),
                 Card(
                   child: Column(

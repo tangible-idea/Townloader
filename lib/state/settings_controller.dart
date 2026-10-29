@@ -1,6 +1,7 @@
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 
 import '../config/app_config.dart';
+import '../l10n/strings.dart';
 import '../services/settings_store.dart';
 
 /// 설정 화면과 나머지 앱이 공유하는 상태.
@@ -15,6 +16,7 @@ class SettingsController extends ChangeNotifier {
   bool _saveToGallery = true;
   bool _personalUseAck = false;
   bool _aiSummaryConsent = false;
+  String? _languageCode;
   bool _isLoaded = false;
   SettingsBackend _backend = SettingsBackend.keychain;
 
@@ -25,6 +27,10 @@ class SettingsController extends ChangeNotifier {
 
   QualityPreference get quality => _quality;
   bool get saveToGallery => _saveToGallery;
+
+  /// 사용자가 직접 고른 언어 코드('ko' 또는 'en'). 기기 설정을 따르면 null.
+  String? get languageCode => _languageCode;
+  Locale? get locale => _languageCode == null ? null : Locale(_languageCode!);
 
   /// 개인 보관 안내에 동의했는지. 동의 전에는 저장할 때마다 안내를 띄운다.
   bool get personalUseAcknowledged => _personalUseAck;
@@ -47,8 +53,19 @@ class SettingsController extends ChangeNotifier {
     _saveToGallery = await _store.readSaveToGallery();
     _personalUseAck = await _store.readPersonalUseAck();
     _aiSummaryConsent = await _store.readAiSummaryConsent();
+    _languageCode = await _store.readLanguage();
+    S.overrideLanguageCode = _languageCode;
     _isLoaded = true;
     notifyListeners();
+  }
+
+  Future<void> setLanguage(String? code) async {
+    final normalized = (code == 'ko' || code == 'en') ? code : null;
+    if (_languageCode == normalized) return;
+    _languageCode = normalized;
+    S.overrideLanguageCode = normalized;
+    notifyListeners();
+    await _store.writeLanguage(normalized);
   }
 
   Future<void> setQuality(QualityPreference value) async {

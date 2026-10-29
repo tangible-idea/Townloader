@@ -16,6 +16,7 @@ import 'package:townloader/models/ig_post.dart';
 import 'package:townloader/models/ig_user.dart';
 import 'package:townloader/models/saved_link.dart';
 import 'package:townloader/services/download_service.dart';
+import 'package:townloader/services/link_analyzer.dart';
 import 'package:townloader/services/links_store.dart';
 import 'package:townloader/services/settings_store.dart';
 import 'package:townloader/state/account_controller.dart';
@@ -371,6 +372,102 @@ https://www.instagram.com/seoul__guide/
     expect(roundTrip.rating, 4.8);
     expect(roundTrip.reviewCount, 1515);
     expect(roundTrip.summary, '도심 속 고즈넉한 산책 명소');
+  });
+
+  test('기기 언어가 영어여도 게시물 주언어가 한글이면 한글로 대표 제목을 짓는다', () async {
+    expect(
+      LinkAnalyzer.isKoreanPost(
+        caption: '가을 산책 명소 #seoul @eateat.mag',
+        places: const ['덕수궁'],
+        fallback: false,
+      ),
+      isTrue,
+    );
+    expect(
+      LinkAnalyzer.isKoreanPost(
+        caption: 'Best hidden cafes in Kyoto for autumn walks',
+        places: const ['Arashiyama'],
+        fallback: true,
+      ),
+      isFalse,
+    );
+
+    bool? requestedKo;
+    final links = LinksController(
+      store: store,
+      resolve: (IgLink link) async =>
+          ResolveResult(title: '', posts: [_post(link.code!)]),
+      analyze: (post, {required isKo}) async => [_place],
+      title: (link, {required isKo}) async {
+        requestedKo = isKo;
+        return isKo ? '서울 가을 산책 명소' : 'Seoul Autumn Walks';
+      },
+    );
+    // 기기 언어가 영어(isKo: false)인 상태로 저장해도 한글 게시물이면 한글 제목을 요청한다.
+    await links.load(isKo: false);
+    await links.addFromText(
+      'https://www.instagram.com/p/DdK3PpFmpRJ/',
+      isKo: false,
+    );
+    await pumpEventQueue();
+
+    expect(requestedKo, isTrue);
+    expect(links.links.single.title, '서울 가을 산책 명소');
+  });
+
+  testWidgets('링크 항목을 오른쪽으로 스와이프하면 Read·Delete 버튼이 뜨고 동작한다', (
+    tester,
+  ) async {
+    final links = controller();
+    await links.load(isKo: true);
+    await links.addFromText(
+      'https://www.instagram.com/p/DdK3PpFmpRJ/',
+      isKo: true,
+    );
+    await tester.pump();
+    await tester.pump();
+
+    String? openedInRead;
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider.value(value: links),
+          ChangeNotifierProvider(
+            create: (_) => DownloadService(settings: _FakeSettingsStore()),
+          ),
+          ChangeNotifierProvider(
+            create: (_) => AccountController(
+              client: MapsClient(),
+              links: links,
+              readSession: () async => null,
+              writeSession: (_) async => true,
+            ),
+          ),
+        ],
+        child: MaterialApp(
+          home: LinksScreen(onOpenRead: (url) => openedInRead = url),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // 오른쪽으로 스와이프해 액션 버튼을 연다.
+    await tester.drag(find.text('@eateat.mag'), const Offset(160, 0));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Read'), findsOneWidget);
+    expect(find.text('Delete'), findsOneWidget);
+
+    await tester.tap(find.text('Read'));
+    await tester.pumpAndSettle();
+    expect(openedInRead, 'https://www.instagram.com/p/DdK3PpFmpRJ/');
+
+    // 다시 오른쪽으로 스와이프해 삭제를 누르면 항목이 지워진다.
+    await tester.drag(find.text('@eateat.mag'), const Offset(160, 0));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Delete'));
+    await tester.pumpAndSettle();
+    expect(links.allLinks, isEmpty);
   });
 }
 

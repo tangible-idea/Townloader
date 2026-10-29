@@ -87,15 +87,43 @@ class LinkAnalyzer {
     return [for (final line in sorted.take(4)) line.text];
   }
 
-  /// 저장한 글의 짧은 대표 제목. 이번 실행에서 분석한 글이면 표지 글씨도 함께 보낸다.
-  Future<String?> title(SavedLink link, {required bool isKo}) =>
-      _places.title(
-        code: link.code,
-        isKo: isKo,
-        caption: link.caption,
-        places: [for (final place in link.places) place.name],
-        lines: _headlines.remove(link.code) ?? const [],
-      );
+  /// 게시물 본문·표지 글씨·장소 이름의 주언어가 한국어인지 판별한다.
+  /// 기기 언어가 영어여도 한국어 게시물이면 한국어 제목을 짓는다.
+  static bool isKoreanPost({
+    String? caption,
+    List<String> places = const [],
+    List<String> lines = const [],
+    bool fallback = true,
+  }) {
+    final sample = [?caption, ...lines, ...places]
+        .join(' ')
+        .replaceAll(RegExp(r'https?://\S+'), '')
+        .replaceAll(RegExp(r'@[\w.]+'), '');
+    final hangul = RegExp(r'[가-힣ㄱ-ㅎㅏ-ㅣ]').allMatches(sample).length;
+    final latin = RegExp(r'[A-Za-z]').allMatches(sample).length;
+    if (hangul == 0 && latin == 0) return fallback;
+    return hangul > 0 && hangul * 2 >= latin;
+  }
+
+  /// 저장한 글의 짧은 대표 제목. 기기 언어 대신 게시물의 주언어를 따라가고,
+  /// 이번 실행에서 분석한 글이면 표지 글씨도 함께 보낸다.
+  Future<String?> title(SavedLink link, {required bool isKo}) {
+    final places = [for (final place in link.places) place.name];
+    final lines = _headlines.remove(link.code) ?? const [];
+    final postIsKo = isKoreanPost(
+      caption: link.caption,
+      places: places,
+      lines: lines,
+      fallback: isKo,
+    );
+    return _places.title(
+      code: link.code,
+      isKo: postIsKo,
+      caption: link.caption,
+      places: places,
+      lines: lines,
+    );
+  }
 
   /// 사진 한 장의 글자 줄. 받지 못하거나 읽지 못하면 빈 목록이다.
   Future<List<OcrLine>> _readImage(String url) async {

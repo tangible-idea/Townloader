@@ -50,12 +50,16 @@ class AccountController extends ChangeNotifier {
   String? get error => _error;
   DateTime? get lastSynced => _lastSynced;
 
+  static String postShareKey(String code) => 'post:$code';
+
   MapShare? shareOf(String category) {
     for (final share in _shares) {
       if (share.category == category) return share;
     }
     return null;
   }
+
+  MapShare? shareOfPost(String code) => shareOf(postShareKey(code));
 
   /// 저장해 둔 세션이 있으면 이어서 동기화한다. Links 를 읽은 뒤에 부른다.
   Future<void> load() async {

@@ -318,7 +318,8 @@ class LinksController extends ChangeNotifier {
 
   final Set<String> _enrichedLinks = {};
 
-  /// 분석은 끝났는데 제목이 없는 글(제목 기능 전에 저장한 글 등)에 하나씩 제목을 짓는다.
+  /// 분석은 끝났는데 제목이 없거나, 한국어 게시물인데 영문 제목으로 잘못 지어진 글에
+  /// 하나씩 제목을 다시 짓는다.
   Future<void> fillTitles() async {
     final title = _title;
     if (title == null || _titling) return;
@@ -326,16 +327,22 @@ class LinksController extends ChangeNotifier {
     try {
       while (true) {
         final link = _links
-            .where((l) => l.status == LinkStatus.ready && l.title == null)
+            .where((l) => l.status == LinkStatus.ready && _needsTitle(l))
             .where((l) => !_untitled.contains(l.code))
             .firstOrNull;
         if (link == null) break;
-        final name = await title(link, isKo: _isKo);
+        final postIsKo = LinkAnalyzer.isKoreanPost(
+          caption: link.caption,
+          places: [for (final p in link.places) p.name],
+          fallback: _isKo,
+        );
+        final name = await title(link, isKo: postIsKo);
         if (name == null) {
           // 못 지은 글은 이번 실행에서는 다시 묻지 않는다.
           _untitled.add(link.code);
           continue;
         }
+        _untitled.add(link.code);
         _replace(link.code, (l) => l.copyWith(title: name));
         notifyListeners();
         await _save();
@@ -343,6 +350,18 @@ class LinksController extends ChangeNotifier {
     } finally {
       _titling = false;
     }
+  }
+
+  static bool _needsTitle(SavedLink link) {
+    final current = link.title;
+    if (current == null || current.trim().isEmpty) return true;
+    final hasHangul = RegExp(r'[가-힣]').hasMatch(current);
+    if (hasHangul) return false;
+    return LinkAnalyzer.isKoreanPost(
+      caption: link.caption,
+      places: [for (final p in link.places) p.name],
+      fallback: false,
+    );
   }
 
   final Set<String> _untitled = {};
@@ -390,8 +409,13 @@ class LinksController extends ChangeNotifier {
         ),
       );
       final ready = _find(link.code);
-      if (ready != null && ready.title == null && _title != null) {
-        final name = await _title(ready, isKo: _isKo);
+      if (ready != null && _title != null) {
+        final postIsKo = LinkAnalyzer.isKoreanPost(
+          caption: ready.caption,
+          places: [for (final p in ready.places) p.name],
+          fallback: _isKo,
+        );
+        final name = await _title(ready, isKo: postIsKo);
         if (name != null) _replace(link.code, (l) => l.copyWith(title: name));
       }
     } on HikerException catch (error) {

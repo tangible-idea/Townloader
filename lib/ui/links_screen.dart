@@ -10,6 +10,7 @@ import '../models/saved_link.dart';
 import '../services/download_service.dart';
 import '../state/account_controller.dart';
 import '../state/links_controller.dart';
+import '../state/resolve_controller.dart';
 import 'downloads_screen.dart';
 import 'places_map_screen.dart';
 import 'widgets/network_thumb.dart';
@@ -17,7 +18,10 @@ import 'widgets/state_views.dart';
 
 /// 링크를 붙여넣어 카테고리별로 모으고, 글마다 찾은 장소를 보여 준다.
 class LinksScreen extends StatefulWidget {
-  const LinksScreen({super.key});
+  const LinksScreen({super.key, this.onOpenRead});
+
+  /// 링크를 읽기(Read) 탭으로 보내 바로 열 때 호출한다.
+  final void Function(String link)? onOpenRead;
 
   @override
   State<LinksScreen> createState() => LinksScreenState();
@@ -82,9 +86,15 @@ class LinksScreenState extends State<LinksScreen> {
     return result;
   }
 
-  /// 카테고리 지도를 공유한다. 처음이면 public 으로 바뀐다는 것을 알리고 동의를 받는다.
-  Future<void> _shareMap(BuildContext context, String category) async {
+  /// 카테고리 또는 개별 글 지도를 공유한다. 처음이면 public 으로 바뀐다는 것을 알리고 동의를 받는다.
+  Future<void> _shareMap(
+    BuildContext context,
+    String shareKey, {
+    String? label,
+    bool isPost = false,
+  }) async {
     final s = S.of(context);
+    final displayTitle = label ?? shareKey;
     final account = context.read<AccountController>();
     final messenger = ScaffoldMessenger.of(context);
     final box = context.findRenderObject() as RenderBox?;
@@ -103,7 +113,7 @@ class LinksScreenState extends State<LinksScreen> {
       return;
     }
 
-    final existing = account.shareOf(category);
+    final existing = account.shareOf(shareKey);
     if (existing != null) {
       final action = await showModalBottomSheet<String>(
         context: context,
@@ -113,9 +123,14 @@ class LinksScreenState extends State<LinksScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               ListTile(
-                leading: const Icon(Icons.public),
-                title: Text('$category · ${s.sharePublicLabel}'),
+                leading: const Icon(Icons.link),
+                title: Text('$displayTitle · ${s.sharePublicLabel}'),
                 subtitle: Text(existing.url),
+              ),
+              ListTile(
+                leading: const Icon(Icons.open_in_browser),
+                title: Text(s.shareOpenInBrowser),
+                onTap: () => Navigator.of(context).pop('open'),
               ),
               ListTile(
                 leading: const Icon(Icons.ios_share),
@@ -132,10 +147,15 @@ class LinksScreenState extends State<LinksScreen> {
         ),
       );
       try {
-        if (action == 'send') {
-          await _sendShareLink(existing, origin);
+        if (action == 'open') {
+          await launchUrl(
+            Uri.parse(existing.url),
+            mode: LaunchMode.externalApplication,
+          );
+        } else if (action == 'send') {
+          await _sendShareLink(existing, origin, subject: displayTitle);
         } else if (action == 'stop') {
-          await account.unshare(category);
+          await account.unshare(shareKey);
           show(s.shareStopped);
         }
       } on MapsException catch (error) {
@@ -148,8 +168,8 @@ class LinksScreenState extends State<LinksScreen> {
     final agreed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(s.shareMapTitle(category)),
-        content: Text(s.shareMapBody),
+        title: Text(s.shareMapTitle(displayTitle)),
+        content: Text(isPost ? s.sharePostBody : s.shareMapBody),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
@@ -164,21 +184,24 @@ class LinksScreenState extends State<LinksScreen> {
     );
     if (agreed != true) return;
     try {
-      final share = await account.share(category);
-      await _sendShareLink(share, origin);
+      final share = await account.share(shareKey);
+      await _sendShareLink(share, origin, subject: displayTitle);
     } on MapsException catch (error) {
       show(error.message);
     }
   }
 
-  Future<void> _sendShareLink(MapShare share, Rect? origin) =>
-      SharePlus.instance.share(
-        ShareParams(
-          uri: Uri.parse(share.url),
-          subject: share.category,
-          sharePositionOrigin: origin,
-        ),
-      );
+  Future<void> _sendShareLink(
+    MapShare share,
+    Rect? origin, {
+    String? subject,
+  }) => SharePlus.instance.share(
+    ShareParams(
+      uri: Uri.parse(share.url),
+      subject: subject ?? share.category,
+      sharePositionOrigin: origin,
+    ),
+  );
 
   Future<void> _newCategory() async {
     final s = S.of(context);
@@ -284,8 +307,29 @@ class LinksScreenState extends State<LinksScreen> {
                     sliver: SliverList.separated(
                       itemCount: links.length,
                       separatorBuilder: (_, _) => const SizedBox(height: 8),
-                      itemBuilder: (context, index) =>
-                          _LinkCard(link: links[index]),
+                      itemBuilder: (context, index) {
+                        final item = links[index];
+                        return _SwipeActionCard(
+                          key: ValueKey(item.code),
+                          onRead: () => _openInRead(item.url),
+                          onDelete: () =>
+                              context.read<LinksController>().remove(item),
+                          child: _LinkCard(
+                            link: item,
+                            onRead: () => _openInRead(item.url),
+                            onShare: (buttonContext) => _shareMap(
+                              buttonContext,
+                              AccountController.postShareKey(item.code),
+                              label:
+                                  item.title ??
+                                  (item.author == null
+                                      ? item.code
+                                      : '@${item.author}'),
+                              isPost: true,
+                            ),
+                          ),
+                        );
+                      },
                     ),
                   ),
               ],
@@ -294,6 +338,15 @@ class LinksScreenState extends State<LinksScreen> {
         ),
       ),
     );
+  }
+
+  void _openInRead(String url) {
+    final callback = widget.onOpenRead;
+    if (callback != null) {
+      callback(url);
+    } else {
+      context.read<ResolveController?>()?.resolve(url);
+    }
   }
 
   Widget _categories(BuildContext context, LinksController controller) {
@@ -311,9 +364,9 @@ class LinksScreenState extends State<LinksScreen> {
         children: [
           for (final category in controller.categories) ...[
             ChoiceChip(
-              // 공유해서 public 이 된 카테고리는 지구 아이콘으로 알린다.
+              // 공유해서 public 이 된 카테고리는 링크 아이콘으로 알린다.
               avatar: shared.contains(category)
-                  ? const Icon(Icons.public, size: 16)
+                  ? const Icon(Icons.link, size: 16)
                   : null,
               label: Text('$category ${controller.countIn(category)}'),
               selected: category == controller.selectedCategory,
@@ -370,16 +423,25 @@ class LinksScreenState extends State<LinksScreen> {
 }
 
 class _LinkCard extends StatelessWidget {
-  const _LinkCard({required this.link});
+  const _LinkCard({
+    required this.link,
+    required this.onShare,
+    this.onRead,
+  });
 
   final SavedLink link;
+  final void Function(BuildContext buttonContext) onShare;
+  final VoidCallback? onRead;
 
   @override
   Widget build(BuildContext context) {
+    final s = S.of(context);
     final theme = Theme.of(context);
     final muted = theme.textTheme.bodySmall?.copyWith(
       color: theme.colorScheme.onSurfaceVariant,
     );
+    final share = context.watch<AccountController?>()?.shareOfPost(link.code);
+    final isShared = share != null;
 
     final canOpenMap =
         link.status == LinkStatus.ready && link.places.isNotEmpty;
@@ -444,7 +506,30 @@ class _LinkCard extends StatelessWidget {
                       ],
                     ),
                   ),
-                  _menu(context),
+                  const SizedBox(width: 4),
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _menu(context, sharedUrl: share?.url),
+                      const SizedBox(height: 4),
+                      Builder(
+                        builder: (buttonContext) => IconButton(
+                          tooltip: s.shareMap,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints.tightFor(
+                            width: 32,
+                            height: 32,
+                          ),
+                          icon: Icon(
+                            isShared ? Icons.link : Icons.ios_share,
+                            size: 20,
+                            color: isShared ? theme.colorScheme.primary : null,
+                          ),
+                          onPressed: () => onShare(buttonContext),
+                        ),
+                      ),
+                    ],
+                  ),
                 ],
               ),
               if (link.places.isNotEmpty) ...[
@@ -521,7 +606,7 @@ class _LinkCard extends StatelessWidget {
     };
   }
 
-  Widget _menu(BuildContext context) {
+  Widget _menu(BuildContext context, {String? sharedUrl}) {
     final s = S.of(context);
     final controller = context.read<LinksController>();
     final others = [
@@ -529,9 +614,20 @@ class _LinkCard extends StatelessWidget {
         if (category != link.category) category,
     ];
     return PopupMenuButton<String>(
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints.tightFor(width: 32, height: 32),
       icon: const Icon(Icons.more_vert, size: 20),
       onSelected: (value) {
         switch (value) {
+          case '_read':
+            onRead?.call();
+          case '_open_shared':
+            if (sharedUrl != null) {
+              launchUrl(
+                Uri.parse(sharedUrl),
+                mode: LaunchMode.externalApplication,
+              );
+            }
           case '_open':
             launchUrl(
               Uri.parse(link.url),
@@ -546,6 +642,13 @@ class _LinkCard extends StatelessWidget {
         }
       },
       itemBuilder: (context) => [
+        if (onRead != null)
+          PopupMenuItem(value: '_read', child: Text(s.navDownload)),
+        if (sharedUrl != null)
+          PopupMenuItem(
+            value: '_open_shared',
+            child: Text(s.shareOpenInBrowser),
+          ),
         PopupMenuItem(value: '_open', child: Text(s.openOriginal)),
         if (link.status != LinkStatus.analyzing)
           PopupMenuItem(value: '_retry', child: Text(s.linksRetry)),
@@ -626,6 +729,181 @@ class _PlaceChip extends StatelessWidget {
                     ),
                   ),
                 ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 카드를 가로로 밀면 Read(읽기 탭으로 보내기)와 Delete(항목 삭제) 버튼을 드러낸다.
+class _SwipeActionCard extends StatefulWidget {
+  const _SwipeActionCard({
+    super.key,
+    required this.onRead,
+    required this.onDelete,
+    required this.child,
+  });
+
+  final VoidCallback onRead;
+  final VoidCallback onDelete;
+  final Widget child;
+
+  @override
+  State<_SwipeActionCard> createState() => _SwipeActionCardState();
+}
+
+class _SwipeActionCardState extends State<_SwipeActionCard> {
+  static const double _revealWidth = 104;
+  double _offset = 0;
+  bool _dragging = false;
+
+  void _onDragStart(DragStartDetails _) {
+    setState(() => _dragging = true);
+  }
+
+  void _onDragUpdate(DragUpdateDetails details) {
+    setState(() {
+      _offset = (_offset + details.delta.dx).clamp(-_revealWidth, _revealWidth);
+    });
+  }
+
+  void _onDragEnd(DragEndDetails details) {
+    final vx = details.primaryVelocity ?? 0;
+    setState(() {
+      _dragging = false;
+      if (_offset > _revealWidth * 0.35 || (vx > 300 && _offset >= 0)) {
+        _offset = _revealWidth;
+      } else if (_offset < -_revealWidth * 0.35 ||
+          (vx < -300 && _offset <= 0)) {
+        _offset = -_revealWidth;
+      } else {
+        _offset = 0;
+      }
+    });
+  }
+
+  void _close() {
+    if (_offset != 0) setState(() => _offset = 0);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = S.of(context);
+    final scheme = Theme.of(context).colorScheme;
+    final alignLeft = _offset >= 0;
+
+    final actions = SizedBox(
+      width: _revealWidth - 8,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            child: _ActionTile(
+              icon: Icons.chrome_reader_mode_outlined,
+              label: s.navDownload,
+              background: scheme.primary,
+              foreground: scheme.onPrimary,
+              onTap: () {
+                _close();
+                widget.onRead();
+              },
+            ),
+          ),
+          const SizedBox(height: 6),
+          Expanded(
+            child: _ActionTile(
+              icon: Icons.delete_outline,
+              label: s.linksDelete,
+              background: scheme.error,
+              foreground: scheme.onError,
+              onTap: () {
+                _close();
+                widget.onDelete();
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onHorizontalDragStart: _onDragStart,
+      onHorizontalDragUpdate: _onDragUpdate,
+      onHorizontalDragEnd: _onDragEnd,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          if (_offset != 0)
+            Positioned.fill(
+              child: Align(
+                alignment:
+                    alignLeft ? Alignment.centerLeft : Alignment.centerRight,
+                child: actions,
+              ),
+            ),
+          AnimatedContainer(
+            duration: _dragging
+                ? Duration.zero
+                : const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic,
+            transform: Matrix4.translationValues(_offset, 0, 0),
+            child: GestureDetector(
+              onTap: _offset != 0 ? _close : null,
+              child: AbsorbPointer(absorbing: _offset != 0, child: widget.child),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ActionTile extends StatelessWidget {
+  const _ActionTile({
+    required this.icon,
+    required this.label,
+    required this.background,
+    required this.foreground,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color background;
+  final Color foreground;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: background,
+      borderRadius: BorderRadius.circular(12),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: SizedBox.expand(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, size: 18, color: foreground),
+                const SizedBox(width: 5),
+                Flexible(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: foreground,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
               ],
             ),
           ),

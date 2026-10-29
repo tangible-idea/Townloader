@@ -61,6 +61,7 @@ class SettingsStore {
   static const _keyPersonalUseAck = 'personal_use_ack';
   static const _keyAiSummaryConsent = 'ai_summary_consent';
   static const _keyAccountSession = 'account_session';
+  static const _keyLanguage = 'app_language';
 
   /// 키체인이 정말 동작하는지 한 번만 확인하고 결과를 재사용한다.
   static const _canary = '__townloader_probe';
@@ -126,6 +127,15 @@ class SettingsStore {
 
   Future<bool> writeAccountSession(String? value) =>
       _write(_keyAccountSession, value ?? '');
+
+  /// 앱 표시 언어 코드('ko', 'en'). 기기 설정을 따르면 null.
+  Future<String?> readLanguage() async {
+    final raw = await _read(_keyLanguage);
+    return (raw == 'ko' || raw == 'en') ? raw : null;
+  }
+
+  Future<bool> writeLanguage(String? code) =>
+      _write(_keyLanguage, code ?? '');
 
   Future<String?> _read(String key) async {
     if (await backend == SettingsBackend.keychain) {

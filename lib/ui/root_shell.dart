@@ -95,7 +95,7 @@ class _RootShellState extends State<RootShell> {
     final pages = IndexedStack(
       index: _index,
       children: [
-        LinksScreen(key: _linksKey),
+        LinksScreen(key: _linksKey, onOpenRead: _openRead),
         HomeScreen(
           key: _homeKey,
           onOpenProfile: _openProfile,
@@ -173,6 +173,13 @@ class _RootShellState extends State<RootShell> {
   }
 
   void _openDownloads() => DownloadsScreen.open(context);
+
+  void _openRead(String link) {
+    setState(() => _index = _homeIndex);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _homeKey.currentState?.handleSharedLink(link);
+    });
+  }
 
   void _openProfile(String username) {
     setState(() => _index = _profileIndex);

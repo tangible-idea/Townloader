@@ -103,7 +103,52 @@ export function parsePlacesRequest(raw: unknown): PlacesRequest {
   };
 }
 
-export async function findPlaces(env: PlacesEnv, body: PlacesRequest): Promise<Place[]> {
+/**
+ * 장소를 찾다가 바깥 서비스(Jev·Poe·카카오·Mapbox) 일부가 실패해도 찾은 것은 돌려준다.
+ * [failures] 에 실패한 단계를 남겨, 부르는 쪽이 캐시할지·오류로 볼지 정한다.
+ */
+export interface FindPlacesResult {
+  places: Place[];
+  failures: string[];
+}
+
+/** 좌표를 찾을 후보 하나. */
+export type GeoCandidate = Candidate & { source: "image" | "caption" };
+
+/**
+ * 후보 묶음의 좌표를 찾는다. Worker 한 번 실행이 보낼 수 있는 바깥 요청 수에 한도가
+ * 있어서(무료 플랜 50), 부르는 쪽은 이것을 따로 실행되는 Worker 에 몇 개씩 나눠 맡긴다.
+ */
+export type GeocodeBatch = (candidates: GeoCandidate[]) => Promise<FindPlacesResult>;
+
+/** 한 번에 맡길 후보 수. 후보 하나에 카카오·Mapbox 요청이 많게는 7번쯤 나간다. */
+export const GEOCODE_CHUNK = 4;
+
+export async function geocodeCandidates(
+  env: PlacesEnv,
+  candidates: GeoCandidate[],
+): Promise<FindPlacesResult> {
+  const failures: string[] = [];
+  const located = await Promise.all(
+    candidates.map(async (candidate) => {
+      const hit = await geocode(env, candidate.name, candidate.address).catch((error) => {
+        failures.push(`geocode: ${error}`);
+        return null;
+      });
+      return hit && { ...candidate, ...hit };
+    }),
+  );
+  const places: Place[] = [];
+  for (const place of located) if (place) places.push(place);
+  return { places, failures };
+}
+
+export async function findPlaces(
+  env: PlacesEnv,
+  body: PlacesRequest,
+  geocodeBatch: GeocodeBatch = (candidates) => geocodeCandidates(env, candidates),
+): Promise<FindPlacesResult> {
+  const failures: string[] = [];
   const places: Place[] = [];
   if (body.tag?.name) {
     const extra = await kakaoPlace(env, body.tag.name, body.tag.address).catch(() => null);
@@ -125,25 +170,34 @@ export async function findPlaces(env: PlacesEnv, body: PlacesRequest): Promise<P
     });
   }
 
-  const fromImages = await placesFromImages(env, body.images);
+  const fromImages = await placesFromImages(env, body.images, failures);
   // 사진에서 못 찾았으면 위치 태그가 있어도 본문까지 읽는다(태그는 대개 하나뿐이다).
   const fromCaption =
     fromImages.length === 0 && body.caption.trim()
-      ? await placesFromCaption(env, body.caption)
+      ? await placesFromCaption(env, body.caption).catch((error) => {
+          failures.push(`caption: ${error}`);
+          return [];
+        })
       : [];
 
-  const candidates = [
+  const candidates: GeoCandidate[] = [
     ...fromImages.map((c) => ({ ...c, source: "image" as const })),
     ...fromCaption.map((c) => ({ ...c, source: "caption" as const, imageIndex: null })),
   ];
-  const located = await Promise.all(
-    candidates.map(async (candidate) => {
-      const hit = await geocode(env, candidate.name, candidate.address);
-      return hit && { ...candidate, ...hit };
-    }),
+  const chunks: GeoCandidate[][] = [];
+  for (let i = 0; i < candidates.length; i += GEOCODE_CHUNK) {
+    chunks.push(candidates.slice(i, i + GEOCODE_CHUNK));
+  }
+  const results = await Promise.all(
+    chunks.map((chunk) =>
+      geocodeBatch(chunk).catch((error) => ({ places: [], failures: [`geocode batch: ${error}`] })),
+    ),
   );
-  for (const place of located) if (place) places.push(place);
-  return dedupe(places);
+  for (const result of results) {
+    places.push(...result.places);
+    failures.push(...result.failures);
+  }
+  return { places: dedupe(places), failures };
 }
 
 // ── 1. 사진 글자(OCR) → 장소 이름 ────────────────────────────────────────────
@@ -170,12 +224,17 @@ const PLACE_THRESHOLD = 0.6;
 async function placesFromImages(
   env: PlacesEnv,
   images: PlacesRequest["images"],
+  failures: string[],
 ): Promise<Candidate[]> {
   const perImage = await Promise.all(
     images
       .filter((image) => image.lines.length > 0)
       .map(async (image) => {
-        const roles = await classifyLines(env, image.lines);
+        // 사진 한 장을 못 읽어도 나머지 사진의 장소는 살린다.
+        const roles = await classifyLines(env, image.lines).catch((error) => {
+          failures.push(`image ${image.index}: ${error}`);
+          return [] as number[];
+        });
         return image.lines.flatMap((line, i) =>
           (roles[i] ?? 0) >= PLACE_THRESHOLD
             ? splitPlaceLine(line.text).map((c) => ({ ...c, imageIndex: image.index }))
