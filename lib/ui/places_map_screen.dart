@@ -5,13 +5,16 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../config/app_config.dart';
+import '../data/places_client.dart';
 import '../l10n/strings.dart';
 import '../models/saved_link.dart';
 import '../state/links_controller.dart';
 import 'map/place_card_image.dart';
 import 'widgets/network_thumb.dart';
+import 'widgets/place_detail_sheet.dart';
 import 'widgets/state_views.dart';
 
 /// 저장한 모든 장소를 지구본 위에 한 번에 보여 준다. 카테고리는 점 색으로 나눈다.
@@ -120,6 +123,7 @@ class _PlacesMapScreenState extends State<PlacesMapScreen> {
   static String _nameOf(SavedLink link) =>
       link.title ?? (link.author == null ? link.code : '@${link.author}');
   final _cards = PlaceCardImage();
+  final _placesClient = PlacesClient();
   late final int _initialIndex = _findInitialIndex();
   PageController? _pageController;
   PageController get _pages => _pageController ??= PageController(
@@ -173,6 +177,7 @@ class _PlacesMapScreenState extends State<PlacesMapScreen> {
   void dispose() {
     _tapSubscription?.cancel();
     _cards.close();
+    _placesClient.close();
     _pageController?.dispose();
     super.dispose();
   }
@@ -273,7 +278,12 @@ class _PlacesMapScreenState extends State<PlacesMapScreen> {
       onTap: (annotation) {
         final pin = _pinByAnnotation[annotation.id];
         final index = pin == null ? -1 : _pins.indexOf(pin);
-        if (index >= 0) _select(index, fromMap: true);
+        if (index < 0) return;
+        if (index == _current) {
+          _showDetail(pin!);
+        } else {
+          _select(index, fromMap: true);
+        }
       },
     );
 
@@ -351,10 +361,25 @@ class _PlacesMapScreenState extends State<PlacesMapScreen> {
     }
   }
 
+  /// 지도 위 풍선 카드에 적을 한 줄. 카카오맵 업종·별점이 있으면 먼저 보여 준다.
+  static String _pinSubtitle(_Pin pin) {
+    final place = pin.place;
+    final kakao = [
+      if (place.category != null && place.category!.isNotEmpty) place.category!,
+      if (place.rating != null && place.rating! > 0)
+        '★ ${place.rating!.toStringAsFixed(1)}',
+    ];
+    if (kakao.isNotEmpty) return kakao.join(' · ');
+    if (place.address != null && place.address!.isNotEmpty) {
+      return place.address!;
+    }
+    return pin.link.author == null ? '' : '@${pin.link.author}';
+  }
+
   Future<void> _addCard(_Pin pin, double sortKey, double pixelRatio) async {
     final image = await _cards.render(
       title: pin.place.name,
-      subtitle: pin.link.author == null ? '' : '@${pin.link.author}',
+      subtitle: _pinSubtitle(pin),
       photoUrl: pin.link.photoFor(pin.place),
       pixelRatio: pixelRatio,
     );
@@ -479,6 +504,15 @@ class _PlacesMapScreenState extends State<PlacesMapScreen> {
       );
     }
     _focus(index);
+  }
+
+  void _showDetail(_Pin pin) {
+    PlaceDetailSheet.show(
+      context,
+      place: pin.place,
+      link: pin.link,
+      client: _placesClient,
+    );
   }
 
   /// [index] 의 장소로 날아간다. 확대 정도는 장소들이 흩어진 정도에 맞춰, 가까운 이웃
@@ -653,7 +687,7 @@ class _PlacesMapScreenState extends State<PlacesMapScreen> {
               child: SafeArea(
                 top: false,
                 child: SizedBox(
-                  height: 112,
+                  height: 122,
                   child: PageView.builder(
                     controller: _pages,
                     itemCount: _pins.length,
@@ -666,7 +700,10 @@ class _PlacesMapScreenState extends State<PlacesMapScreen> {
                         pin: pin,
                         color: Color(_colorOf(pin.link)),
                         selected: index == _current,
-                        onTap: () => _select(index),
+                        onTap: () {
+                          _select(index);
+                          _showDetail(pin);
+                        },
                         onLongPress: _editable
                             ? () => _confirmDelete(pin)
                             : null,
@@ -717,6 +754,27 @@ class _PlaceTile extends StatelessWidget {
     final muted = theme.textTheme.bodySmall?.copyWith(
       color: theme.colorScheme.onSurfaceVariant,
     );
+    final hasRating = place.rating != null && place.rating! > 0;
+    final hasReviews = place.reviewCount != null && place.reviewCount! > 0;
+    final ratingLabel = [
+      if (hasRating) '★ ${place.rating!.toStringAsFixed(1)}',
+      if (hasReviews)
+        hasRating
+            ? '(${place.reviewCount})'
+            : (s.isKo ? '후기 ${place.reviewCount}' : '${place.reviewCount} reviews'),
+    ].join(' ');
+    final addressLine = [
+      if (place.summary != null && place.summary!.isNotEmpty)
+        place.summary!
+      else ...[
+        if (place.address != null && place.address!.isNotEmpty)
+          place.approximate
+              ? '${place.address} · ${s.linksApproximate}'
+              : place.address!,
+        if (place.phone != null && place.phone!.isNotEmpty) place.phone!,
+      ],
+    ].join(' · ');
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(6, 0, 6, 12),
       child: Material(
@@ -730,31 +788,56 @@ class _PlaceTile extends StatelessWidget {
           child: Row(
             children: [
               SizedBox(
-                width: 100,
+                width: 104,
                 height: double.infinity,
                 child: NetworkThumb(url: pin.link.photoFor(place)),
               ),
               Expanded(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                  padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Text(
-                        place.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              place.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.titleSmall?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          if (place.category != null &&
+                              place.category!.isNotEmpty) ...[
+                            const SizedBox(width: 6),
+                            Text(
+                              place.category!,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: muted,
+                            ),
+                          ],
+                          if (ratingLabel.isNotEmpty) ...[
+                            const SizedBox(width: 6),
+                            Text(
+                              ratingLabel,
+                              maxLines: 1,
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: theme.colorScheme.primary,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
-                      if (place.address != null) ...[
+                      if (addressLine.isNotEmpty) ...[
                         const SizedBox(height: 2),
                         Text(
-                          place.approximate
-                              ? '${place.address} · ${s.linksApproximate}'
-                              : place.address!,
+                          addressLine,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: muted,
@@ -790,6 +873,20 @@ class _PlaceTile extends StatelessWidget {
                   ),
                 ),
               ),
+              if (place.placeUrl != null && place.placeUrl!.isNotEmpty)
+                IconButton(
+                  tooltip: 'KakaoMap',
+                  visualDensity: VisualDensity.compact,
+                  icon: Icon(
+                    Icons.open_in_new,
+                    size: 18,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                  onPressed: () => launchUrl(
+                    Uri.parse(place.placeUrl!),
+                    mode: LaunchMode.externalApplication,
+                  ),
+                ),
             ],
           ),
         ),

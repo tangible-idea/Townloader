@@ -243,6 +243,12 @@ interface SavedLink {
     lat: number;
     lng: number;
     address?: string | null;
+    category?: string | null;
+    phone?: string | null;
+    photoUrl?: string | null;
+    placeUrl?: string | null;
+    rating?: number | null;
+    reviewCount?: number | null;
     approximate?: boolean;
     imageIndex?: number | null;
   }[];
@@ -317,6 +323,11 @@ async function createShare(
 export interface PublicPlace {
   name: string;
   address: string | null;
+  category?: string | null;
+  phone?: string | null;
+  placeUrl?: string | null;
+  rating?: number | null;
+  reviewCount?: number | null;
   lat: number;
   lng: number;
   approximate: boolean;
@@ -364,7 +375,7 @@ export function cleanCaption(caption: string | null | undefined): string | null 
   return text.length > 1200 ? `${text.slice(0, 1200).trimEnd()}…` : text;
 }
 
-const PHOTO_URL = /^https:\/\/[^/]*(cdninstagram\.com|fbcdn\.net)\//;
+const PHOTO_URL = /^https:\/\/[^/]*(cdninstagram\.com|fbcdn\.net|kakaocdn\.net)\//;
 
 function photoUrl(value: unknown): string | null {
   return typeof value === "string" && PHOTO_URL.test(value) ? value : null;
@@ -400,20 +411,26 @@ async function publicMap(env: Env, id: string): Promise<PublicMap | null> {
     for (const place of link.places ?? []) {
       if (typeof place.lat !== "number" || typeof place.lng !== "number") continue;
       const index = place.imageIndex;
-      const photo =
+      const slidePhoto =
         typeof index === "number" && index >= 0 && index < (link.imageUrls?.length ?? 0)
           ? photoUrl(link.imageUrls![index])
           : null;
+      const kakaoPhoto = photoUrl(place.photoUrl);
       post.places.push(places.length);
       places.push({
         name: String(place.name ?? ""),
         address: place.address ?? null,
+        category: place.category ?? null,
+        phone: place.phone ?? null,
+        placeUrl: place.placeUrl ?? null,
+        rating: typeof place.rating === "number" ? place.rating : null,
+        reviewCount: typeof place.reviewCount === "number" ? place.reviewCount : null,
         lat: place.lat,
         lng: place.lng,
         approximate: place.approximate === true,
         url: link.url,
         author: link.author ?? null,
-        photo: photo ?? post.coverUrl,
+        photo: kakaoPhoto ?? slidePhoto ?? post.coverUrl,
         post: posts.length,
       });
     }

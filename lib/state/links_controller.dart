@@ -25,10 +25,12 @@ class LinksController extends ChangeNotifier {
     })
     analyze,
     Future<String?> Function(SavedLink link, {required bool isKo})? title,
+    Future<SavedPlace> Function(SavedPlace place)? enrichPlace,
   }) : _store = store,
        _resolve = resolve,
        _analyze = analyze,
-       _title = title;
+       _title = title,
+       _enrichPlace = enrichPlace;
 
   factory LinksController.live(
     IgRepository repository,
@@ -38,6 +40,7 @@ class LinksController extends ChangeNotifier {
     resolve: repository.resolve,
     analyze: analyzer.analyze,
     title: analyzer.title,
+    enrichPlace: analyzer.enrichPlace,
   );
 
   final LinksStore _store;
@@ -47,7 +50,9 @@ class LinksController extends ChangeNotifier {
 
   /// 분석이 끝난 글의 대표 제목을 짓는다. 없으면 제목 없이 둔다.
   final Future<String?> Function(SavedLink link, {required bool isKo})? _title;
+  final Future<SavedPlace> Function(SavedPlace place)? _enrichPlace;
   bool _titling = false;
+  bool _enriching = false;
 
   List<String> _categories = const [];
   List<SavedLink> _links = const [];
@@ -276,7 +281,42 @@ class LinksController extends ChangeNotifier {
       }
     }
     fillTitles();
+    fillPlaceDetails();
   }
+
+  /// 예전에 저장해 카카오맵 사진·업종·요약 정보가 없는 장소들을 뒤에서 채운다.
+  Future<void> fillPlaceDetails() async {
+    final enrich = _enrichPlace;
+    if (enrich == null || _enriching) return;
+    _enriching = true;
+    try {
+      for (final link in [..._links]) {
+        if (link.status != LinkStatus.ready || link.places.isEmpty) continue;
+        if (_enrichedLinks.contains(link.code)) continue;
+        if (link.places.every(
+          (p) => (p.hasKakaoDetails && p.summary != null) || p.approximate,
+        )) {
+          _enrichedLinks.add(link.code);
+          continue;
+        }
+        _enrichedLinks.add(link.code);
+        final updated = await Future.wait(link.places.map(enrich));
+        var changed = false;
+        for (var i = 0; i < updated.length; i++) {
+          if (!identical(updated[i], link.places[i])) changed = true;
+        }
+        if (changed) {
+          _replace(link.code, (l) => l.copyWith(places: updated));
+          notifyListeners();
+          await _save();
+        }
+      }
+    } finally {
+      _enriching = false;
+    }
+  }
+
+  final Set<String> _enrichedLinks = {};
 
   /// 분석은 끝났는데 제목이 없는 글(제목 기능 전에 저장한 글 등)에 하나씩 제목을 짓는다.
   Future<void> fillTitles() async {

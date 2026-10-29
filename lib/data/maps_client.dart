@@ -102,6 +102,12 @@ class PublicMap {
         lng: (raw['lng'] as num).toDouble(),
         source: PlaceSource.tag,
         address: raw['address'] as String?,
+        category: raw['category'] as String?,
+        phone: raw['phone'] as String?,
+        photoUrl: imageIndex < 0 ? photo : null,
+        placeUrl: raw['placeUrl'] as String?,
+        rating: (raw['rating'] as num?)?.toDouble(),
+        reviewCount: (raw['reviewCount'] as num?)?.toInt(),
         imageIndex: imageIndex < 0 ? null : imageIndex,
         approximate: raw['approximate'] == true,
       );

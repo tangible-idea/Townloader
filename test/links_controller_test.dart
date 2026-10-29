@@ -1,11 +1,16 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:provider/provider.dart';
 import 'package:townloader/data/hiker_client.dart';
 import 'package:townloader/data/ig_repository.dart';
 import 'package:townloader/data/ig_url.dart';
 import 'package:townloader/data/maps_client.dart';
 import 'package:townloader/data/media_parser.dart';
+import 'package:townloader/data/places_client.dart';
 import 'package:townloader/models/ig_asset.dart';
 import 'package:townloader/models/ig_post.dart';
 import 'package:townloader/models/ig_user.dart';
@@ -221,6 +226,151 @@ https://www.instagram.com/seoul__guide/
       find.byType(PlacesMapScreen),
     );
     expect(mapScreen.initialLink?.code, 'DdK3PpFmpRJ');
+  });
+
+  test('카카오맵에서 장소의 대표 사진·업종·별점·전화번호·리뷰를 찾아 채우고 우선 표시한다', () async {
+    final client = PlacesClient(
+      httpClient: MockClient((request) async {
+        if (request.url.host == 'place-api.map.kakao.com') {
+          final panel = jsonEncode({
+            'ai_mate': {
+              'summary': {'title': '도심 속 고즈넉한 산책 명소'},
+              'bottom_sheet': {'summary': '돌담길과 야간 개장이 아름다운 궁궐입니다.'},
+              'blog_summaries': [
+                {
+                  'title': '분위기',
+                  'keywords': ['고즈넉한', '산책하기좋은'],
+                },
+              ],
+            },
+            'open_hours': {
+              'headline': {
+                'display_text': '영업 중',
+                'display_text_info': '21:00에 영업 종료',
+              },
+              'week_from_today': {
+                'week_periods': [
+                  {
+                    'days': [
+                      {
+                        'day_of_the_week_desc': '목(10/29)',
+                        'on_days': {'start_end_time_desc': '09:00 ~ 21:00'},
+                      },
+                    ],
+                  },
+                ],
+              },
+            },
+            'menu': {
+              'menus': {
+                'items': [
+                  {'name': '일반권 (개인)', 'price': 1000, 'desc': '만25세~만64세'},
+                ],
+              },
+            },
+            'kakaomap_review': {
+              'strength_description': [
+                {'id': 9, 'name': '뷰'},
+              ],
+              'score_set': {
+                'strength_counts': [
+                  {'id': 9, 'count': 360},
+                ],
+              },
+              'reviews': [
+                {
+                  'star_rating': 5,
+                  'contents': '아이들과 방문하기 좋습니다.',
+                  'registered_at': '2025-11-25 14:23:27',
+                  'meta': {
+                    'owner': {'nickname': 'sung hyun'},
+                  },
+                },
+              ],
+            },
+            'blog_review': {
+              'reviews': [
+                {
+                  'title': '덕수궁 단풍 절정시기 돌담길 포토존',
+                  'contents': '서울 도심에서 가장 운치 있는 산책길',
+                  'author': 'Save Memory',
+                  'registered_at': '2026-10-25 02:46:00',
+                  'origin_url': 'https://blog.naver.com/test/1',
+                },
+              ],
+            },
+          });
+          return http.Response.bytes(
+            utf8.encode(panel),
+            200,
+            headers: {'content-type': 'application/json; charset=utf-8'},
+          );
+        }
+        expect(request.url.host, 'search.map.kakao.com');
+        final payload = jsonEncode({
+          'place': [
+            {
+              'confirmid': '10305191',
+              'name': '덕수궁',
+              'last_cate_name': '고궁,궁',
+              'address': '서울 중구 정동 5-1',
+              'new_address': '서울 중구 세종대로 99',
+              'tel': '02-771-9951',
+              'rating_average': 4.8,
+              'reviewCount': 1515,
+              'img':
+                  'http://t1.kakaocdn.net/local/booking/review/78A2D8980B9049FB9992B12C05E64FF7',
+            },
+          ],
+        });
+        return http.Response.bytes(
+          utf8.encode('/**/j($payload);'),
+          200,
+          headers: {'content-type': 'application/javascript; charset=utf-8'},
+        );
+      }),
+    );
+
+    final enriched = await client.enrichPlace(_place);
+    expect(enriched.category, '고궁,궁');
+    expect(enriched.phone, '02-771-9951');
+    expect(enriched.rating, 4.8);
+    expect(enriched.reviewCount, 1515);
+    expect(enriched.summary, '도심 속 고즈넉한 산책 명소');
+    expect(enriched.placeUrl, 'https://place.map.kakao.com/10305191');
+    expect(
+      enriched.photoUrl,
+      'https://img1.kakaocdn.net/cthumb/local/R400x0/?fname=https%3A%2F%2Ft1.kakaocdn.net%2Flocal%2Fbooking%2Freview%2F78A2D8980B9049FB9992B12C05E64FF7',
+    );
+
+    final detail = await client.fetchPlaceDetail(enriched);
+    expect(detail?.aiTitle, '도심 속 고즈넉한 산책 명소');
+    expect(detail?.aiSummary, '돌담길과 야간 개장이 아름다운 궁궐입니다.');
+    expect(detail?.aiKeywords, ['고즈넉한', '산책하기좋은']);
+    expect(detail?.openStatus, '영업 중 · 21:00에 영업 종료');
+    expect(detail?.menus.single.name, '일반권 (개인)');
+    expect(detail?.menus.single.price, 1000);
+    expect(detail?.strengths.single.name, '뷰');
+    expect(detail?.strengths.single.count, 360);
+    expect(detail?.visitorReviews.single.contents, '아이들과 방문하기 좋습니다.');
+    expect(detail?.blogReviews.single.title, '덕수궁 단풍 절정시기 돌담길 포토존');
+
+    final link = SavedLink(
+      code: 'DdK3PpFmpRJ',
+      url: 'https://www.instagram.com/p/DdK3PpFmpRJ/',
+      category: '여행',
+      savedAt: DateTime(2026),
+      imageUrls: const ['https://cdn/0.jpg', 'https://cdn/1.jpg'],
+      places: [enriched],
+    );
+    expect(link.photoFor(enriched), enriched.photoUrl);
+
+    final roundTrip = SavedPlace.fromJson(enriched.toJson());
+    expect(roundTrip.category, '고궁,궁');
+    expect(roundTrip.photoUrl, enriched.photoUrl);
+    expect(roundTrip.rating, 4.8);
+    expect(roundTrip.reviewCount, 1515);
+    expect(roundTrip.summary, '도심 속 고즈넉한 산책 명소');
   });
 }
 

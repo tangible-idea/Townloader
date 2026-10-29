@@ -23,6 +23,13 @@ class SavedPlace {
     required this.lng,
     required this.source,
     this.address,
+    this.category,
+    this.phone,
+    this.photoUrl,
+    this.placeUrl,
+    this.rating,
+    this.reviewCount,
+    this.summary,
     this.imageIndex,
     this.approximate = false,
   });
@@ -33,6 +40,13 @@ class SavedPlace {
     lng: (json['lng'] as num).toDouble(),
     source: PlaceSource.parse(json['source']),
     address: json['address'] as String?,
+    category: json['category'] as String?,
+    phone: json['phone'] as String?,
+    photoUrl: json['photoUrl'] as String?,
+    placeUrl: json['placeUrl'] as String?,
+    rating: (json['rating'] as num?)?.toDouble(),
+    reviewCount: (json['reviewCount'] as num?)?.toInt(),
+    summary: json['summary'] as String?,
     imageIndex: json['imageIndex'] as int?,
     approximate: json['approximate'] == true,
   );
@@ -43,11 +57,74 @@ class SavedPlace {
   final PlaceSource source;
   final String? address;
 
+  /// 카카오맵 업종(예: "카페", "고궁,궁").
+  final String? category;
+
+  /// 전화번호.
+  final String? phone;
+
+  /// 카카오맵에서 가져온 장소 대표 사진 썸네일 주소.
+  final String? photoUrl;
+
+  /// 카카오맵 장소 상세 페이지 주소.
+  final String? placeUrl;
+
+  /// 카카오맵 별점(0보다 클 때만).
+  final double? rating;
+
+  /// 카카오맵 후기·평가 수(0보다 클 때만).
+  final int? reviewCount;
+
+  /// 카카오맵 AI 한줄 요약 또는 대표 후기 한 줄.
+  final String? summary;
+
   /// 장소 이름이 적힌 사진의 순번. 사진에서 찾은 장소만 있다.
   final int? imageIndex;
 
   /// 장소를 못 찾고 동네 좌표로 대신했으면 true.
   final bool approximate;
+
+  /// 카카오맵 상세 정보가 이미 채워졌는지.
+  bool get hasKakaoDetails =>
+      photoUrl != null ||
+      category != null ||
+      placeUrl != null ||
+      phone != null ||
+      rating != null;
+
+  /// [placeUrl] 에서 카카오맵 장소 ID(`confirm_id`)를 뽑는다.
+  String? get kakaoId {
+    final url = placeUrl;
+    if (url == null || url.isEmpty) return null;
+    final match = RegExp(r'place\.map\.kakao\.com/(\d+)').firstMatch(url);
+    return match?.group(1);
+  }
+
+  SavedPlace copyWith({
+    String? address,
+    String? category,
+    String? phone,
+    String? photoUrl,
+    String? placeUrl,
+    double? rating,
+    int? reviewCount,
+    String? summary,
+  }) => SavedPlace(
+    name: name,
+    lat: lat,
+    lng: lng,
+    source: source,
+    address: address ?? this.address,
+    category: category ?? this.category,
+    phone: phone ?? this.phone,
+    photoUrl: photoUrl ?? this.photoUrl,
+    placeUrl: placeUrl ?? this.placeUrl,
+    rating: rating ?? this.rating,
+    reviewCount: reviewCount ?? this.reviewCount,
+    summary: summary ?? this.summary,
+    imageIndex: imageIndex,
+    approximate: approximate,
+  );
 
   Map<String, Object?> toJson() => {
     'name': name,
@@ -55,6 +132,13 @@ class SavedPlace {
     'lng': lng,
     'source': source.name,
     'address': address,
+    if (category != null) 'category': category,
+    if (phone != null) 'phone': phone,
+    if (photoUrl != null) 'photoUrl': photoUrl,
+    if (placeUrl != null) 'placeUrl': placeUrl,
+    if (rating != null) 'rating': rating,
+    if (reviewCount != null) 'reviewCount': reviewCount,
+    if (summary != null) 'summary': summary,
     'imageIndex': imageIndex,
     'approximate': approximate,
   };
@@ -123,8 +207,12 @@ class SavedLink {
   final List<SavedPlace> places;
   final String? error;
 
-  /// 장소에 붙일 사진. 장소가 적힌 사진이 있으면 그것, 아니면 대표 사진.
+  /// 장소에 붙일 사진. 카카오맵 장소 사진이 있으면 먼저 쓰고, 없으면 장소가 적힌 사진이나
+  /// 글의 대표 사진을 쓴다.
   String? photoFor(SavedPlace place) {
+    if (place.photoUrl != null && place.photoUrl!.isNotEmpty) {
+      return place.photoUrl;
+    }
     final index = place.imageIndex;
     if (index != null && index >= 0 && index < imageUrls.length) {
       return imageUrls[index];

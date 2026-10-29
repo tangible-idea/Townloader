@@ -575,9 +575,12 @@ class _PlaceChip extends StatelessWidget {
       PlaceSource.image => Icons.image_outlined,
       PlaceSource.caption => Icons.notes,
     };
+    final hasPhoto = place.photoUrl != null && place.photoUrl!.isNotEmpty;
     return Tooltip(
       message: [
+        place.category ?? '',
         place.address ?? '',
+        place.phone ?? '',
         if (place.approximate) s.linksApproximate,
       ].where((text) => text.isNotEmpty).join(' · '),
       child: Material(
@@ -587,22 +590,42 @@ class _PlaceChip extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            padding: EdgeInsets.fromLTRB(hasPhoto ? 4 : 8, 4, 8, 4),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(
-                  icon,
-                  size: 14,
-                  color: theme.colorScheme.onSecondaryContainer,
-                ),
-                const SizedBox(width: 4),
+                if (hasPhoto)
+                  ClipOval(
+                    child: SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: NetworkThumb(url: place.photoUrl),
+                    ),
+                  )
+                else
+                  Icon(
+                    icon,
+                    size: 14,
+                    color: theme.colorScheme.onSecondaryContainer,
+                  ),
+                const SizedBox(width: 5),
                 Text(
                   place.approximate ? '${place.name} ~' : place.name,
                   style: theme.textTheme.labelMedium?.copyWith(
                     color: theme.colorScheme.onSecondaryContainer,
                   ),
                 ),
+                if (place.category != null && place.category!.isNotEmpty) ...[
+                  const SizedBox(width: 4),
+                  Text(
+                    place.category!,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.onSecondaryContainer.withValues(
+                        alpha: 0.7,
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),

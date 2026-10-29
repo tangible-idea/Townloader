@@ -35,6 +35,20 @@ export interface Place {
   imageIndex: number | null;
   /** 장소 자체를 못 찾고 주소(동네)의 좌표로 대신했으면 true. */
   approximate: boolean;
+  /** 카카오맵 업종(예: "카페", "고궁,궁"). */
+  category?: string | null;
+  /** 전화번호. */
+  phone?: string | null;
+  /** 카카오맵 장소 사진 썸네일 주소. */
+  photoUrl?: string | null;
+  /** 카카오맵 장소 상세 페이지 주소. */
+  placeUrl?: string | null;
+  /** 카카오맵 별점(0보다 클 때만). */
+  rating?: number | null;
+  /** 카카오맵 후기·평가 수(0보다 클 때만). */
+  reviewCount?: number | null;
+  /** 카카오맵 AI 한줄 요약 또는 대표 후기 한 줄. */
+  summary?: string | null;
 }
 
 interface OcrLine {
@@ -92,14 +106,22 @@ export function parsePlacesRequest(raw: unknown): PlacesRequest {
 export async function findPlaces(env: PlacesEnv, body: PlacesRequest): Promise<Place[]> {
   const places: Place[] = [];
   if (body.tag?.name) {
+    const extra = await kakaoPlace(env, body.tag.name, body.tag.address).catch(() => null);
     places.push({
       name: body.tag.name,
-      address: body.tag.address,
+      address: body.tag.address ?? extra?.address ?? null,
       lat: body.tag.lat,
       lng: body.tag.lng,
       source: "tag",
       imageIndex: null,
       approximate: false,
+      category: extra?.category ?? null,
+      phone: extra?.phone ?? null,
+      photoUrl: extra?.photoUrl ?? null,
+      placeUrl: extra?.placeUrl ?? null,
+      rating: extra?.rating ?? null,
+      reviewCount: extra?.reviewCount ?? null,
+      summary: extra?.summary ?? null,
     });
   }
 
@@ -268,13 +290,43 @@ interface GeoHit {
   lng: number;
   address: string | null;
   approximate: boolean;
+  category?: string | null;
+  phone?: string | null;
+  photoUrl?: string | null;
+  placeUrl?: string | null;
+  rating?: number | null;
+  reviewCount?: number | null;
+  summary?: string | null;
 }
 
 interface KakaoDoc {
+  id?: string;
   place_name?: string;
+  category_name?: string;
+  category_group_name?: string;
+  phone?: string;
   address_name: string;
+  road_address_name?: string;
+  place_url?: string;
   x: string;
   y: string;
+}
+
+interface KakaoMapPlace {
+  confirmid?: string;
+  name?: string;
+  tel?: string;
+  address?: string;
+  new_address?: string;
+  img?: string;
+  last_cate_name?: string;
+  cate_name_depth2?: string;
+  rating_average?: number | string;
+  rating_count?: number | string;
+  reviewCount?: number | string;
+  image_info?: {
+    image_main_urls?: string[];
+  };
 }
 
 async function geocode(env: PlacesEnv, name: string, address: string | null): Promise<GeoHit | null> {
@@ -296,10 +348,141 @@ async function kakaoPlace(env: PlacesEnv, name: string, address: string | null):
       (d) => similar(query, d.place_name ?? "") && matchesArea(d.address_name, area),
     );
     if (doc) {
-      return { lat: Number(doc.y), lng: Number(doc.x), address: doc.address_name, approximate: false };
+      const detail = await kakaoMapDetail(query, doc.id, area);
+      const cate =
+        detail?.category ??
+        leafCategory(doc.category_name, doc.category_group_name);
+      const phone = doc.phone?.trim() || detail?.phone || null;
+      const placeUrl = doc.place_url
+        ? doc.place_url.replace(/^http:\/\//, "https://")
+        : doc.id
+          ? `https://place.map.kakao.com/${doc.id}`
+          : detail?.placeUrl ?? null;
+      return {
+        lat: Number(doc.y),
+        lng: Number(doc.x),
+        address: doc.road_address_name?.trim() || doc.address_name,
+        approximate: false,
+        category: cate,
+        phone,
+        photoUrl: detail?.photoUrl ?? null,
+        placeUrl,
+        rating: detail?.rating ?? null,
+        reviewCount: detail?.reviewCount ?? null,
+        summary: detail?.summary ?? null,
+      };
     }
   }
   return null;
+}
+
+function leafCategory(full?: string, group?: string): string | null {
+  if (full) {
+    const parts = full
+      .split(">")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (parts.length > 0) return parts[parts.length - 1];
+  }
+  return group?.trim() || null;
+}
+
+function kakaoThumb(rawUrl?: string | null): string | null {
+  if (!rawUrl || !rawUrl.trim()) return null;
+  const httpsUrl = rawUrl.trim().replace(/^http:\/\//, "https://");
+  return `https://img1.kakaocdn.net/cthumb/local/R400x0/?fname=${encodeURIComponent(httpsUrl)}`;
+}
+
+/** 카카오맵 장소 검색에서 대표 사진·별점·후기 수를 가져온다. 실패해도 좌표 찾기는 막지 않는다. */
+async function kakaoMapDetail(
+  query: string,
+  docId: string | undefined,
+  area: string[],
+): Promise<{
+  category: string | null;
+  phone: string | null;
+  photoUrl: string | null;
+  placeUrl: string | null;
+  rating: number | null;
+  reviewCount: number | null;
+  summary: string | null;
+} | null> {
+  try {
+    const url =
+      "https://search.map.kakao.com/mapsearch/map.daum?callback=j&msFlag=A&sort=0&q=" +
+      encodeURIComponent(query);
+    const response = await fetch(url, {
+      headers: {
+        referer: "https://map.kakao.com/",
+        "user-agent": "Mozilla/5.0",
+      },
+    });
+    if (!response.ok) return null;
+    const text = await response.text();
+    const start = text.indexOf("(");
+    const end = text.lastIndexOf(")");
+    if (start < 0 || end <= start) return null;
+    const data = JSON.parse(text.slice(start + 1, end)) as {
+      place?: KakaoMapPlace[];
+    };
+    const list = data.place ?? [];
+    const hit =
+      (docId ? list.find((p) => p.confirmid === docId) : undefined) ??
+      list.find(
+        (p) =>
+          similar(query, p.name ?? "") &&
+          matchesArea(`${p.address ?? ""} ${p.new_address ?? ""}`, area),
+      );
+    if (!hit) return null;
+    const rawImg = hit.img || hit.image_info?.image_main_urls?.[0] || null;
+    const rating = Number(hit.rating_average);
+    const reviews = Number(hit.reviewCount) || Number(hit.rating_count);
+    const summary = hit.confirmid ? await kakaoPanelSummary(hit.confirmid) : null;
+    return {
+      category: hit.last_cate_name?.trim() || hit.cate_name_depth2?.trim() || null,
+      phone: hit.tel?.trim() || null,
+      photoUrl: kakaoThumb(rawImg),
+      placeUrl: hit.confirmid
+        ? `https://place.map.kakao.com/${hit.confirmid}`
+        : null,
+      rating: Number.isFinite(rating) && rating > 0 ? rating : null,
+      reviewCount: Number.isFinite(reviews) && reviews > 0 ? reviews : null,
+      summary,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function kakaoPanelSummary(confirmId: string): Promise<string | null> {
+  try {
+    const response = await fetch(
+      `https://place-api.map.kakao.com/places/panel3/${encodeURIComponent(confirmId)}`,
+      {
+        headers: {
+          referer: `https://place.map.kakao.com/${confirmId}`,
+          "user-agent": "Mozilla/5.0",
+          accept: "application/json",
+          pf: "web",
+        },
+      },
+    );
+    if (!response.ok) return null;
+    const data = (await response.json()) as Record<string, any>;
+    const aiTitle = data?.ai_mate?.summary?.title ?? data?.ai_mate?.bottom_sheet?.title;
+    if (typeof aiTitle === "string" && aiTitle.trim()) return aiTitle.trim();
+    const firstVisitor = data?.kakaomap_review?.reviews?.[0]?.contents;
+    if (typeof firstVisitor === "string" && firstVisitor.trim()) {
+      return firstVisitor.trim().replace(/\s+/g, " ").slice(0, 80);
+    }
+    const firstBlog = data?.blog_review?.reviews?.[0]?.title;
+    if (typeof firstBlog === "string" && firstBlog.trim()) {
+      return firstBlog.trim().slice(0, 80);
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 /** 장소를 못 찾으면 주소(동네)의 좌표로 대신한다. */

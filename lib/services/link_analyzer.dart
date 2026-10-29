@@ -60,7 +60,7 @@ class LinkAnalyzer {
     }
 
     final location = post.location;
-    return _places.findPlaces({
+    final found = await _places.findPlaces({
       'code': post.code ?? post.pk,
       'lang': isKo ? 'ko' : 'en',
       'tag': location == null
@@ -74,7 +74,12 @@ class LinkAnalyzer {
       'caption': post.caption ?? '',
       'images': images,
     });
+    return Future.wait(found.map(_places.enrichPlace));
   }
+
+  /// 이미 저장된 장소에 카카오맵 사진·업종·별점 등을 채운다.
+  Future<SavedPlace> enrichPlace(SavedPlace place) =>
+      _places.enrichPlace(place);
 
   /// 글자가 큰 줄부터 몇 줄. 표지 사진의 제목이 대개 가장 크다.
   static List<String> headlinesOf(List<OcrLine> lines) {
