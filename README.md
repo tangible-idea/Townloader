@@ -95,6 +95,30 @@ Worker 는 앱이 쓰는 HikerAPI 경로만 통과시키고, IP 별 분당 요�
 > 불특정 다수에게 공개 배포하는 빌드에 키를 심으면 크레딧이 소진될 수 있습니다.
 > 개인·사내 빌드에만 쓰고, 공개 배포에는 키를 쥔 프록시 서버를 두는 편이 맞습니다.
 
+### 계정 동기화와 지도 공유
+
+`maps/` 의 Cloudflare Worker(`townloader-maps`)가 로그인, 링크 동기화, 카테고리 지도 공유를 맡습니다.
+데이터는 D1(`townloader-maps`)에 있고, 공유 링크는 `https://townloader-maps.mark-tangible.workers.dev/m/<id>` 입니다.
+앱이 깔려 있으면 Universal Link · App Link 로 앱이 열고, 없으면 같은 주소가 웹 지도를 보여 줍니다.
+공개 지도에는 장소와 인스타그램 원문 링크만 나가고 캡션과 사진은 나가지 않습니다.
+
+```bash
+cd maps
+npx wrangler d1 migrations apply townloader-maps --remote   # 표를 바꿨을 때
+npx wrangler deploy
+```
+
+구글 로그인은 Google Cloud Console > API 및 서비스 > 사용자 인증 정보에서 OAuth 클라이언트 세 개를 만들어야 동작합니다.
+
+| 종류 | 넣을 값 | 쓰는 곳 |
+| --- | --- | --- |
+| 웹 애플리케이션 | - | `.env.json` 의 `GOOGLE_SERVER_CLIENT_ID`, `maps/wrangler.toml` 의 `GOOGLE_CLIENT_IDS` |
+| Android | 패키지 `net.tangibleidea.townloader`, 업로드 키·Play 앱 서명 키의 SHA-1 | 콘솔에 등록만 하면 됨 |
+| iOS | 번들 ID `net.tangibleidea.townloader` | `.env.json` 의 `GOOGLE_IOS_CLIENT_ID`, `GOOGLE_CLIENT_IDS`, Info.plist URL scheme(뒤집은 ID) |
+
+Apple 로그인은 iOS 에서만 보이고, Apple Developer 의 App ID 에 Sign in with Apple 과 Associated Domains 가 켜져 있어야 합니다.
+Android App Link 검증에는 `maps/wrangler.toml` 의 `ANDROID_CERT_SHA256` 에 Play 앱 서명 키 SHA-256 도 더해야 합니다.
+
 ## 저장 위치
 
 | 플랫폼 | 위치 |

@@ -5,6 +5,7 @@ import '../l10n/strings.dart';
 import '../services/file_saver.dart';
 import '../services/settings_store.dart';
 import '../state/settings_controller.dart';
+import 'widgets/account_card.dart';
 
 /// 다운로드 동작을 설정하는 화면.
 class SettingsScreen extends StatefulWidget {
@@ -29,6 +30,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
+                _sectionTitle(context, s.accountSection),
+                const AccountCard(),
+                const SizedBox(height: 16),
                 _sectionTitle(context, s.qualitySection),
                 Card(
                   child: Column(

@@ -1,7 +1,10 @@
 import 'dart:async';
 
+import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
+import '../data/maps_client.dart';
 import '../l10n/strings.dart';
 import '../services/share_intake.dart';
 import 'downloads_screen.dart';
@@ -9,6 +12,7 @@ import 'home_screen.dart';
 import 'links_screen.dart';
 import 'profile_screen.dart';
 import 'settings_screen.dart';
+import 'shared_map_screen.dart';
 
 /// 화면 폭에 따라 하단 탭 / 사이드 레일로 바뀌는 최상위 뼈대.
 class RootShell extends StatefulWidget {
@@ -19,29 +23,42 @@ class RootShell extends StatefulWidget {
 }
 
 class _RootShellState extends State<RootShell> {
-  static const int _homeIndex = 0;
-  static const int _profileIndex = 1;
+  static const int _linksIndex = 0;
+  static const int _homeIndex = 1;
+  static const int _profileIndex = 2;
 
-  int _index = _homeIndex;
+  int _index = _linksIndex;
 
   /// 홈에서 프로필 링크를 만났을 때 프로필 화면을 직접 열기 위해 필요하다.
   final _profileKey = GlobalKey<ProfileScreenState>();
 
-  /// 공유 시트로 들어온 링크를 홈 화면에 넘기기 위해 필요하다.
+  /// 링크 탭이 받지 않는 공유 링크를 읽기 화면에 넘기기 위해 필요하다.
   final _homeKey = GlobalKey<HomeScreenState>();
+
+  /// 공유 시트로 들어온 링크를 링크 탭에 바로 저장하기 위해 필요하다.
+  final _linksKey = GlobalKey<LinksScreenState>();
 
   final _shareIntake = ShareIntake();
   StreamSubscription<String>? _shareSubscription;
+
+  /// 지도 공유 링크(Universal Link · App Link). 앱이 꺼져 있다 열린 경우도 처음에 한 번 온다.
+  StreamSubscription<Uri>? _deepLinkSubscription;
 
   @override
   void initState() {
     super.initState();
     _shareSubscription = _shareIntake.links.listen(_openSharedLink);
     _shareIntake.start();
+    _deepLinkSubscription = AppLinks().uriLinkStream.listen(
+      _openDeepLink,
+      // 딥링크 플러그인이 없는 플랫폼(테스트·데스크톱).
+      onError: (Object _) {},
+    );
   }
 
   @override
   void dispose() {
+    _deepLinkSubscription?.cancel();
     _shareSubscription?.cancel();
     _shareIntake.dispose();
     super.dispose();
@@ -52,6 +69,12 @@ class _RootShellState extends State<RootShell> {
     final s = S.of(context);
 
     final destinations = <_Destination>[
+      // 다운로드 목록은 Links 탭 오른쪽 위 아이콘으로 옮겼다.
+      _Destination(
+        icon: Icons.bookmarks_outlined,
+        selectedIcon: Icons.bookmarks,
+        label: s.navLinks,
+      ),
       _Destination(
         icon: Icons.chrome_reader_mode_outlined,
         selectedIcon: Icons.chrome_reader_mode,
@@ -61,12 +84,6 @@ class _RootShellState extends State<RootShell> {
         icon: Icons.person_outline,
         selectedIcon: Icons.person,
         label: s.navProfile,
-      ),
-      // 다운로드 목록은 Links 탭 오른쪽 위 아이콘으로 옮겼다.
-      _Destination(
-        icon: Icons.bookmarks_outlined,
-        selectedIcon: Icons.bookmarks,
-        label: s.navLinks,
       ),
       _Destination(
         icon: Icons.settings_outlined,
@@ -78,13 +95,13 @@ class _RootShellState extends State<RootShell> {
     final pages = IndexedStack(
       index: _index,
       children: [
+        LinksScreen(key: _linksKey),
         HomeScreen(
           key: _homeKey,
           onOpenProfile: _openProfile,
           onOpenDownloads: _openDownloads,
         ),
         ProfileScreen(key: _profileKey, onOpenDownloads: _openDownloads),
-        const LinksScreen(),
         const SettingsScreen(),
       ],
     );
@@ -136,12 +153,23 @@ class _RootShellState extends State<RootShell> {
     );
   }
 
+  /// 공유한 링크는 링크 탭에 저장한다. 링크 탭이 받지 않는 링크(Threads, 프로필 등)는
+  /// 읽기 화면에서 연다.
   void _openSharedLink(String link) {
-    setState(() => _index = _homeIndex);
-    // 앱이 공유로 막 켜졌다면 홈 화면 state 가 첫 프레임 뒤에 준비된다.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    setState(() => _index = _linksIndex);
+    // 앱이 공유로 막 켜졌다면 각 화면 state 가 첫 프레임 뒤에 준비된다.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final saved = await _linksKey.currentState?.handleSharedLink(link);
+      if (saved != false || !mounted) return;
+      setState(() => _index = _homeIndex);
       _homeKey.currentState?.handleSharedLink(link);
     });
+  }
+
+  void _openDeepLink(Uri uri) {
+    final id = context.read<MapsClient>().shareIdOf(uri);
+    if (id == null || !mounted) return;
+    SharedMapScreen.open(context, id);
   }
 
   void _openDownloads() => DownloadsScreen.open(context);

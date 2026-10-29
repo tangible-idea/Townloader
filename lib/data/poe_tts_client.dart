@@ -3,16 +3,32 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../config/app_config.dart';
+
 /// Poe API 로 ElevenLabs v3 음성을 만든다.
 ///
 /// Poe 는 OpenAI 호환 `chat/completions` 로 봇을 부른다. 음성 봇은 글로 된 답 대신
 /// 만들어진 오디오 파일의 주소를 메시지 안에 실어 돌려주므로, 그 주소를 꺼내 쓴다.
+///
+/// 프록시가 있으면 키 없이 `<proxyUrl>/tts` 로 보내고, 프록시가 Poe 를 불러 응답을
+/// 그대로 돌려준다. 없으면 개발용으로 [apiKey] 를 써서 Poe 를 직접 부른다.
 class PoeTtsClient {
-  PoeTtsClient({required this.apiKey, http.Client? httpClient})
-    : _http = httpClient ?? http.Client();
+  PoeTtsClient({
+    this.apiKey = '',
+    http.Client? httpClient,
+    String? proxyUrl,
+    String? appToken,
+  }) : _http = httpClient ?? http.Client(),
+       _proxyUrl = proxyUrl ?? AppConfig.proxyUrl,
+       _appToken = appToken ?? AppConfig.proxyAppToken;
 
   final String apiKey;
   final http.Client _http;
+  final String _proxyUrl;
+  final String _appToken;
+
+  /// 프록시든 직접 키든 음성을 만들 수 있는지.
+  static bool get isAvailable => AppConfig.hasProxy || AppConfig.hasPoeKey;
 
   static final Uri endpoint = Uri.parse(
     'https://api.poe.com/v1/chat/completions',
@@ -25,22 +41,30 @@ class PoeTtsClient {
 
   /// [text] 를 읽은 오디오 파일 주소를 돌려준다.
   Future<Uri> synthesize(String text) async {
+    final viaProxy = _proxyUrl.isNotEmpty;
     final http.Response response;
     try {
       response = await _http
           .post(
-            endpoint,
+            viaProxy ? Uri.parse('$_proxyUrl/tts') : endpoint,
             headers: {
-              'authorization': 'Bearer $apiKey',
+              if (viaProxy)
+                'x-app-token': _appToken
+              else
+                'authorization': 'Bearer $apiKey',
               'content-type': 'application/json',
             },
-            body: jsonEncode({
-              'model': model,
-              'messages': [
-                {'role': 'user', 'content': text},
-              ],
-              'stream': false,
-            }),
+            body: jsonEncode(
+              viaProxy
+                  ? {'text': text}
+                  : {
+                      'model': model,
+                      'messages': [
+                        {'role': 'user', 'content': text},
+                      ],
+                      'stream': false,
+                    },
+            ),
           )
           .timeout(timeout);
     } on TimeoutException {

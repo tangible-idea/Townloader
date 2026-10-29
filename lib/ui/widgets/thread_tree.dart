@@ -52,7 +52,7 @@ class _ThreadTreeState extends State<ThreadTree> {
   void initState() {
     super.initState();
     _reader = widget.commentReader;
-    if (_reader == null && AppConfig.hasPoeKey) {
+    if (_reader == null && PoeTtsClient.isAvailable) {
       _reader = CommentReader(
         synthesize: PoeTtsClient(apiKey: AppConfig.poeApiKey).synthesize,
       );

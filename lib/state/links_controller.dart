@@ -24,9 +24,11 @@ class LinksController extends ChangeNotifier {
       required bool isKo,
     })
     analyze,
+    Future<String?> Function(SavedLink link, {required bool isKo})? title,
   }) : _store = store,
        _resolve = resolve,
-       _analyze = analyze;
+       _analyze = analyze,
+       _title = title;
 
   factory LinksController.live(
     IgRepository repository,
@@ -35,12 +37,17 @@ class LinksController extends ChangeNotifier {
     store: FileLinksStore(),
     resolve: repository.resolve,
     analyze: analyzer.analyze,
+    title: analyzer.title,
   );
 
   final LinksStore _store;
   final Future<ResolveResult> Function(IgLink link) _resolve;
   final Future<List<SavedPlace>> Function(IgPost post, {required bool isKo})
   _analyze;
+
+  /// 분석이 끝난 글의 대표 제목을 짓는다. 없으면 제목 없이 둔다.
+  final Future<String?> Function(SavedLink link, {required bool isKo})? _title;
+  bool _titling = false;
 
   List<String> _categories = const [];
   List<SavedLink> _links = const [];
@@ -65,6 +72,48 @@ class LinksController extends ChangeNotifier {
   ];
 
   List<SavedLink> get allLinks => _links;
+
+  /// 저장할 때마다 1 씩 늘어난다. 동기화가 바뀐 것이 있는지 볼 때 쓴다.
+  int get revision => _revision;
+  int _revision = 0;
+
+  LinksData get data => LinksData(categories: _categories, links: _links);
+
+  /// 다른 기기에서 동기화한 링크를 합친다. 같은 글이면 분석이 끝난 쪽을 남기고,
+  /// 둘 다 끝났으면 기기의 것을 남긴다. 카테고리는 기기 순서 뒤에 새것을 붙인다.
+  Future<void> mergeFrom(LinksData remote) async {
+    final byCode = {for (final link in _links) link.code: link};
+    var changed = false;
+    for (final link in remote.links) {
+      final local = byCode[link.code];
+      if (local == null ||
+          (local.status != LinkStatus.ready && link.status == LinkStatus.ready)) {
+        byCode[link.code] = link;
+        changed = true;
+      } else if (local.title == null && link.title != null) {
+        byCode[link.code] = local.copyWith(title: link.title);
+        changed = true;
+      }
+    }
+    final categories = [..._categories];
+    for (final name in [
+      ...remote.categories,
+      for (final link in byCode.values) link.category,
+    ]) {
+      if (name.isNotEmpty && !categories.contains(name)) {
+        categories.add(name);
+        changed = true;
+      }
+    }
+    if (!changed) return;
+    _categories = categories;
+    _links = byCode.values.toList()
+      ..sort((a, b) => b.savedAt.compareTo(a.savedAt));
+    _selected ??= _categories.firstOrNull;
+    notifyListeners();
+    await _save();
+    fillTitles();
+  }
 
   int countIn(String category) =>
       _links.where((link) => link.category == category).length;
@@ -144,6 +193,13 @@ class LinksController extends ChangeNotifier {
     return (added: added, duplicates: duplicates, unsupported: unsupported);
   }
 
+  /// [text] 에 이 탭에 저장할 수 있는 링크(인스타그램 게시물·릴스)가 있는지.
+  static bool hasSavableLink(String text) => extractLinks(text).any((raw) {
+    final link = IgUrlParser.parse(raw);
+    return (link.type == IgLinkType.post || link.type == IgLinkType.reel) &&
+        link.code != null;
+  });
+
   /// 붙여넣은 글자에서 인스타그램 주소만 뽑는다. 여러 줄, 공백, 다른 글이 섞여도 된다.
   static List<String> extractLinks(String text) => [
     for (final match in RegExp(
@@ -173,6 +229,38 @@ class LinksController extends ChangeNotifier {
     await _save();
   }
 
+  /// 글에서 장소 하나를 지운다. 되돌릴 수 있게 지운 자리를 돌려주고, 없으면 -1.
+  Future<int> removePlace(String code, SavedPlace place) async {
+    final link = _find(code);
+    if (link == null) return -1;
+    var index = link.places.indexWhere((p) => identical(p, place));
+    if (index < 0) {
+      index = link.places.indexWhere(
+        (p) => p.name == place.name && p.lat == place.lat && p.lng == place.lng,
+      );
+    }
+    if (index < 0) return -1;
+    _replace(
+      code,
+      (l) => l.copyWith(places: [...l.places]..removeAt(index)),
+    );
+    notifyListeners();
+    await _save();
+    return index;
+  }
+
+  /// [removePlace] 를 되돌린다.
+  Future<void> insertPlace(String code, SavedPlace place, int index) async {
+    if (_find(code) == null) return;
+    _replace(code, (l) {
+      final places = [...l.places];
+      places.insert(index.clamp(0, places.length), place);
+      return l.copyWith(places: places);
+    });
+    notifyListeners();
+    await _save();
+  }
+
   Future<void> moveTo(SavedLink link, String category) async {
     if (!_categories.contains(category)) return;
     _replace(link.code, (l) => l.copyWith(category: category));
@@ -180,14 +268,44 @@ class LinksController extends ChangeNotifier {
     await _save();
   }
 
-  /// 앱을 다시 켰을 때 분석이 끝나지 않았던 글을 다시 돌린다.
+  /// 앱을 다시 켰을 때 분석이 끝나지 않았던 글을 다시 돌리고, 제목이 없는 글에 제목을 짓는다.
   void resumePending() {
     for (final link in _links) {
       if (link.status == LinkStatus.failed && link.error == null) {
         retry(link);
       }
     }
+    fillTitles();
   }
+
+  /// 분석은 끝났는데 제목이 없는 글(제목 기능 전에 저장한 글 등)에 하나씩 제목을 짓는다.
+  Future<void> fillTitles() async {
+    final title = _title;
+    if (title == null || _titling) return;
+    _titling = true;
+    try {
+      while (true) {
+        final link = _links
+            .where((l) => l.status == LinkStatus.ready && l.title == null)
+            .where((l) => !_untitled.contains(l.code))
+            .firstOrNull;
+        if (link == null) break;
+        final name = await title(link, isKo: _isKo);
+        if (name == null) {
+          // 못 지은 글은 이번 실행에서는 다시 묻지 않는다.
+          _untitled.add(link.code);
+          continue;
+        }
+        _replace(link.code, (l) => l.copyWith(title: name));
+        notifyListeners();
+        await _save();
+      }
+    } finally {
+      _titling = false;
+    }
+  }
+
+  final Set<String> _untitled = {};
 
   Future<void> _pump() async {
     if (_working) return;
@@ -231,6 +349,11 @@ class LinksController extends ChangeNotifier {
           clearError: true,
         ),
       );
+      final ready = _find(link.code);
+      if (ready != null && ready.title == null && _title != null) {
+        final name = await _title(ready, isKo: _isKo);
+        if (name != null) _replace(link.code, (l) => l.copyWith(title: name));
+      }
     } on HikerException catch (error) {
       _fail(link, error.message);
     } on PlacesException catch (error) {
@@ -258,6 +381,8 @@ class LinksController extends ChangeNotifier {
     _links = [for (final l in _links) l.code == code ? update(l) : l];
   }
 
-  Future<void> _save() =>
-      _store.save(LinksData(categories: _categories, links: _links));
+  Future<void> _save() {
+    _revision++;
+    return _store.save(LinksData(categories: _categories, links: _links));
+  }
 }

@@ -40,6 +40,7 @@ void main() {
       late http.Request sent;
       final client = PoeTtsClient(
         apiKey: 'poe-key',
+        proxyUrl: '',
         httpClient: MockClient((request) async {
           sent = request;
           return http.Response(
@@ -118,6 +119,37 @@ void main() {
       expect(PoeTtsClient.audioUrlFrom(reply('오디오 없음')), isNull);
     });
 
+    test('프록시가 있으면 키 없이 프록시의 /tts 로 보낸다', () async {
+      late http.Request sent;
+      final client = PoeTtsClient(
+        proxyUrl: 'https://proxy.test',
+        appToken: 'app-token',
+        httpClient: MockClient((request) async {
+          sent = request;
+          return http.Response(
+            jsonEncode({
+              'choices': [
+                {
+                  'message': {
+                    'content': 'https://pfst.cf2.poecdn.net/base/audio/abc.mp3',
+                  },
+                },
+              ],
+            }),
+            200,
+          );
+        }),
+      );
+
+      final url = await client.synthesize('안녕하세요');
+
+      expect(sent.url.toString(), 'https://proxy.test/tts');
+      expect(sent.headers['x-app-token'], 'app-token');
+      expect(sent.headers.containsKey('authorization'), isFalse);
+      expect(jsonDecode(sent.body), {'text': '안녕하세요'});
+      expect(url.toString(), 'https://pfst.cf2.poecdn.net/base/audio/abc.mp3');
+    });
+
     test('키·포인트 문제는 알아볼 수 있는 오류로 바꾼다', () async {
       for (final (status, message) in [
         (401, 'Poe API 키가 올바르지 않습니다.'),
@@ -125,6 +157,7 @@ void main() {
       ]) {
         final client = PoeTtsClient(
           apiKey: 'k',
+          proxyUrl: '',
           httpClient: MockClient((_) async => http.Response('{}', status)),
         );
         await expectLater(

@@ -1,14 +1,22 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
 import 'package:townloader/data/hiker_client.dart';
 import 'package:townloader/data/ig_repository.dart';
 import 'package:townloader/data/ig_url.dart';
+import 'package:townloader/data/maps_client.dart';
 import 'package:townloader/data/media_parser.dart';
 import 'package:townloader/models/ig_asset.dart';
 import 'package:townloader/models/ig_post.dart';
 import 'package:townloader/models/ig_user.dart';
 import 'package:townloader/models/saved_link.dart';
+import 'package:townloader/services/download_service.dart';
 import 'package:townloader/services/links_store.dart';
+import 'package:townloader/services/settings_store.dart';
+import 'package:townloader/state/account_controller.dart';
 import 'package:townloader/state/links_controller.dart';
+import 'package:townloader/ui/links_screen.dart';
+import 'package:townloader/ui/places_map_screen.dart';
 
 IgPost _post(String code) => IgPost(
   pk: 'pk-$code',
@@ -174,4 +182,69 @@ https://www.instagram.com/seoul__guide/
     })!;
     expect(nameOnly.location, isNull);
   });
+
+  testWidgets('분석이 끝난 링크 카드를 누르면 해당 글의 지도로 이동한다', (tester) async {
+    final links = controller();
+    await links.load(isKo: true);
+    await links.addFromText(
+      'https://www.instagram.com/p/DdK3PpFmpRJ/',
+      isKo: true,
+    );
+    await tester.pump();
+    await tester.pump();
+
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider.value(value: links),
+          ChangeNotifierProvider(
+            create: (_) => DownloadService(settings: _FakeSettingsStore()),
+          ),
+          ChangeNotifierProvider(
+            create: (_) => AccountController(
+              client: MapsClient(),
+              links: links,
+              readSession: () async => null,
+              writeSession: (_) async => true,
+            ),
+          ),
+        ],
+        child: const MaterialApp(home: LinksScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('@eateat.mag'));
+    await tester.pumpAndSettle();
+
+    final mapScreen = tester.widget<PlacesMapScreen>(
+      find.byType(PlacesMapScreen),
+    );
+    expect(mapScreen.initialLink?.code, 'DdK3PpFmpRJ');
+  });
+}
+
+class _FakeSettingsStore extends SettingsStore {
+  @override
+  Future<SettingsBackend> get backend async => SettingsBackend.keychain;
+  @override
+  Future<String?> readApiKey() async => null;
+  @override
+  Future<bool> writeApiKey(String? value) async => true;
+  @override
+  Future<QualityPreference> readQuality() async => QualityPreference.best;
+  @override
+  Future<bool> writeQuality(QualityPreference value) async => true;
+  @override
+  Future<bool> readSaveToGallery() async => true;
+  @override
+  Future<bool> writeSaveToGallery(bool value) async => true;
+  @override
+  Future<bool> readPersonalUseAck() async => true;
+  @override
+  Future<bool> writePersonalUseAck() async => true;
+  @override
+  Future<bool> readAiSummaryConsent() async => false;
+  @override
+  Future<bool> writeAiSummaryConsent() async => true;
 }

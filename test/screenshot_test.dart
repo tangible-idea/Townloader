@@ -5,7 +5,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
+import 'package:townloader/data/maps_client.dart';
 import 'package:townloader/services/links_store.dart';
+import 'package:townloader/services/social_sign_in.dart';
+import 'package:townloader/state/account_controller.dart';
 import 'package:townloader/state/links_controller.dart';
 import 'package:townloader/data/hiker_client.dart';
 import 'package:townloader/data/ig_repository.dart';
@@ -161,6 +164,11 @@ Widget _app(Widget child, {bool dark = false}) {
   final base = dark
       ? AppTheme.dark(fontFallback: [_fontFamily])
       : AppTheme.light(fontFallback: [_fontFamily]);
+  final links = LinksController(
+    store: MemoryLinksStore(),
+    resolve: repository.resolve,
+    analyze: (post, {required isKo}) async => const [],
+  )..load(isKo: true);
 
   return MultiProvider(
     providers: [
@@ -168,13 +176,16 @@ Widget _app(Widget child, {bool dark = false}) {
       ChangeNotifierProvider.value(value: DownloadService(settings: store)),
       ChangeNotifierProvider.value(value: ResolveController(repository)),
       ChangeNotifierProvider.value(value: ProfileController(repository)),
-      ChangeNotifierProvider(
-        create: (_) => LinksController(
-          store: MemoryLinksStore(),
-          resolve: repository.resolve,
-          analyze: (post, {required isKo}) async => const [],
-        )..load(isKo: true),
+      ChangeNotifierProvider.value(value: links),
+      ChangeNotifierProvider.value(
+        value: AccountController(
+          client: MapsClient(),
+          links: links,
+          readSession: () async => null,
+          writeSession: (_) async => true,
+        ),
       ),
+      Provider.value(value: SocialSignIn()),
     ],
     child: MaterialApp(
       debugShowCheckedModeBanner: false,

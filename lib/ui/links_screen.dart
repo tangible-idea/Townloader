@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../data/maps_client.dart';
 import '../l10n/strings.dart';
 import '../models/saved_link.dart';
 import '../services/download_service.dart';
+import '../state/account_controller.dart';
 import '../state/links_controller.dart';
 import 'downloads_screen.dart';
 import 'places_map_screen.dart';
@@ -17,10 +20,10 @@ class LinksScreen extends StatefulWidget {
   const LinksScreen({super.key});
 
   @override
-  State<LinksScreen> createState() => _LinksScreenState();
+  State<LinksScreen> createState() => LinksScreenState();
 }
 
-class _LinksScreenState extends State<LinksScreen> {
+class LinksScreenState extends State<LinksScreen> {
   final _input = TextEditingController();
 
   @override
@@ -38,12 +41,26 @@ class _LinksScreenState extends State<LinksScreen> {
     await _save();
   }
 
-  Future<void> _save() async {
+  /// 공유 시트로 들어온 링크를 바로 저장한다. 이 탭이 받지 않는 링크(Threads 등)면
+  /// false 를 돌려주고, 호출한 쪽이 읽기 탭으로 넘긴다.
+  Future<bool> handleSharedLink(String link) async {
+    final links = context.read<LinksController>();
+    if (links.selectedCategory == null ||
+        !LinksController.hasSavableLink(link)) {
+      return false;
+    }
+    _input.text = link;
+    setState(() {});
+    await _save();
+    return true;
+  }
+
+  Future<AddLinksResult> _save() async {
     final s = S.of(context);
     final links = context.read<LinksController>();
     final category = links.selectedCategory ?? '';
     final result = await links.addFromText(_input.text, isKo: s.isKo);
-    if (!mounted) return;
+    if (!mounted) return result;
     FocusScope.of(context).unfocus();
 
     final skipped = s.linksSkipped(result.duplicates, result.unsupported);
@@ -62,7 +79,106 @@ class _LinksScreenState extends State<LinksScreen> {
       ..showSnackBar(
         SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
       );
+    return result;
   }
+
+  /// 카테고리 지도를 공유한다. 처음이면 public 으로 바뀐다는 것을 알리고 동의를 받는다.
+  Future<void> _shareMap(BuildContext context, String category) async {
+    final s = S.of(context);
+    final account = context.read<AccountController>();
+    final messenger = ScaffoldMessenger.of(context);
+    final box = context.findRenderObject() as RenderBox?;
+    final origin = box == null
+        ? null
+        : box.localToGlobal(Offset.zero) & box.size;
+
+    void show(String message) => messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
+      );
+
+    if (!account.isSignedIn) {
+      show(s.shareMapNeedsSignIn);
+      return;
+    }
+
+    final existing = account.shareOf(category);
+    if (existing != null) {
+      final action = await showModalBottomSheet<String>(
+        context: context,
+        showDragHandle: true,
+        builder: (context) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.public),
+                title: Text('$category · ${s.sharePublicLabel}'),
+                subtitle: Text(existing.url),
+              ),
+              ListTile(
+                leading: const Icon(Icons.ios_share),
+                title: Text(s.shareLinkAgain),
+                onTap: () => Navigator.of(context).pop('send'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.lock_outline),
+                title: Text(s.shareStop),
+                onTap: () => Navigator.of(context).pop('stop'),
+              ),
+            ],
+          ),
+        ),
+      );
+      try {
+        if (action == 'send') {
+          await _sendShareLink(existing, origin);
+        } else if (action == 'stop') {
+          await account.unshare(category);
+          show(s.shareStopped);
+        }
+      } on MapsException catch (error) {
+        show(error.message);
+      }
+      return;
+    }
+
+    if (!context.mounted) return;
+    final agreed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(s.shareMapTitle(category)),
+        content: Text(s.shareMapBody),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(s.cancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(s.shareMapAction),
+          ),
+        ],
+      ),
+    );
+    if (agreed != true) return;
+    try {
+      final share = await account.share(category);
+      await _sendShareLink(share, origin);
+    } on MapsException catch (error) {
+      show(error.message);
+    }
+  }
+
+  Future<void> _sendShareLink(MapShare share, Rect? origin) =>
+      SharePlus.instance.share(
+        ShareParams(
+          uri: Uri.parse(share.url),
+          subject: share.category,
+          sharePositionOrigin: origin,
+        ),
+      );
 
   Future<void> _newCategory() async {
     final s = S.of(context);
@@ -103,17 +219,31 @@ class _LinksScreenState extends State<LinksScreen> {
       (service) => service.activeCount,
     );
     final links = controller.links;
-    // 지도는 카테고리와 상관없이 저장한 모든 장소를 보여 준다.
-    final hasPlaces = controller.allLinks.any((link) => link.places.isNotEmpty);
+    // 지도는 지금 고른 카테고리의 장소만 보여 준다.
+    final hasPlaces = links.any((link) => link.places.isNotEmpty);
 
     return Scaffold(
       appBar: AppBar(
         title: Text(s.linksTitle),
         actions: [
+          Builder(
+            builder: (context) => IconButton(
+              tooltip: s.shareMap,
+              icon: const Icon(Icons.ios_share),
+              onPressed: controller.selectedCategory == null
+                  ? null
+                  : () => _shareMap(context, controller.selectedCategory!),
+            ),
+          ),
           IconButton(
             tooltip: s.mapOpen,
             icon: const Icon(Icons.public),
-            onPressed: hasPlaces ? () => PlacesMapScreen.open(context) : null,
+            onPressed: hasPlaces
+                ? () => PlacesMapScreen.open(
+                    context,
+                    category: controller.selectedCategory,
+                  )
+                : null,
           ),
           IconButton(
             tooltip: s.downloadHistory,
@@ -168,6 +298,11 @@ class _LinksScreenState extends State<LinksScreen> {
 
   Widget _categories(BuildContext context, LinksController controller) {
     final s = S.of(context);
+    final shared = {
+      for (final share
+          in context.watch<AccountController?>()?.shares ?? const [])
+        share.category,
+    };
     return SizedBox(
       height: 52,
       child: ListView(
@@ -176,6 +311,10 @@ class _LinksScreenState extends State<LinksScreen> {
         children: [
           for (final category in controller.categories) ...[
             ChoiceChip(
+              // 공유해서 public 이 된 카테고리는 지구 아이콘으로 알린다.
+              avatar: shared.contains(category)
+                  ? const Icon(Icons.public, size: 16)
+                  : null,
               label: Text('$category ${controller.countIn(category)}'),
               selected: category == controller.selectedCategory,
               onSelected: (_) => controller.selectCategory(category),
@@ -242,63 +381,94 @@ class _LinkCard extends StatelessWidget {
       color: theme.colorScheme.onSurfaceVariant,
     );
 
+    final canOpenMap =
+        link.status == LinkStatus.ready && link.places.isNotEmpty;
+
     return Card(
       margin: EdgeInsets.zero,
       clipBehavior: Clip.antiAlias,
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: SizedBox(
-                    width: 64,
-                    height: 80,
-                    child: NetworkThumb(url: link.coverUrl),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        link.author == null ? link.code : '@${link.author}',
-                        style: theme.textTheme.titleSmall,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      if (link.caption != null) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          link.caption!.replaceAll('\n', ' '),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: muted,
-                        ),
-                      ],
-                      const SizedBox(height: 6),
-                      _status(context),
-                    ],
-                  ),
-                ),
-                _menu(context),
-              ],
-            ),
-            if (link.places.isNotEmpty) ...[
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
+      child: InkWell(
+        onTap: canOpenMap
+            ? () => PlacesMapScreen.open(context, link: link)
+            : null,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  for (final place in link.places) _PlaceChip(place: place),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: SizedBox(
+                      width: 64,
+                      height: 80,
+                      child: NetworkThumb(url: link.coverUrl),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // 대표 제목이 아직 없으면(분석 중) 계정명을 제목 자리에 둔다.
+                        Text(
+                          link.title ??
+                              (link.author == null
+                                  ? link.code
+                                  : '@${link.author}'),
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        if (link.caption != null ||
+                            (link.title != null && link.author != null)) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            [
+                              if (link.title != null && link.author != null)
+                                '@${link.author}',
+                              if (link.caption != null)
+                                link.caption!.replaceAll('\n', ' '),
+                            ].join(' · '),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: muted,
+                          ),
+                        ],
+                        const SizedBox(height: 6),
+                        _status(context),
+                      ],
+                    ),
+                  ),
+                  _menu(context),
                 ],
               ),
+              if (link.places.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final place in link.places)
+                      _PlaceChip(
+                        place: place,
+                        onTap: canOpenMap
+                            ? () => PlacesMapScreen.open(
+                                context,
+                                link: link,
+                                place: place,
+                              )
+                            : null,
+                      ),
+                  ],
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
@@ -391,9 +561,10 @@ class _LinkCard extends StatelessWidget {
 }
 
 class _PlaceChip extends StatelessWidget {
-  const _PlaceChip({required this.place});
+  const _PlaceChip({required this.place, this.onTap});
 
   final SavedPlace place;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -409,24 +580,32 @@ class _PlaceChip extends StatelessWidget {
         place.address ?? '',
         if (place.approximate) s.linksApproximate,
       ].where((text) => text.isNotEmpty).join(' · '),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.secondaryContainer,
-          borderRadius: BorderRadius.circular(999),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 14, color: theme.colorScheme.onSecondaryContainer),
-            const SizedBox(width: 4),
-            Text(
-              place.approximate ? '${place.name} ~' : place.name,
-              style: theme.textTheme.labelMedium?.copyWith(
-                color: theme.colorScheme.onSecondaryContainer,
-              ),
+      child: Material(
+        color: theme.colorScheme.secondaryContainer,
+        borderRadius: BorderRadius.circular(999),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  icon,
+                  size: 14,
+                  color: theme.colorScheme.onSecondaryContainer,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  place.approximate ? '${place.name} ~' : place.name,
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: theme.colorScheme.onSecondaryContainer,
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );

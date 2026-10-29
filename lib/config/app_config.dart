@@ -39,4 +39,24 @@ class AppConfig {
   static const String mapboxToken = String.fromEnvironment('MAPBOX_TOKEN');
 
   static bool get hasMapbox => mapboxToken.isNotEmpty;
+
+  /// 지도 공유·동기화 Worker(`maps/`) 주소. 공유 링크(`<mapsUrl>/m/<id>`)가 이 주소라
+  /// 딥링크 설정(iOS associated domains, Android intent-filter)과 같아야 한다.
+  static const String mapsUrl = String.fromEnvironment(
+    'MAPS_URL',
+    defaultValue: 'https://townloader-maps.mark-tangible.workers.dev',
+  );
+
+  /// 구글 로그인의 웹 클라이언트 ID. 구글이 주는 ID 토큰의 aud 가 되고, Worker 의
+  /// GOOGLE_CLIENT_IDS 에도 넣는다. Android 는 이 값이 있어야 ID 토큰을 준다.
+  static const String googleServerClientId = String.fromEnvironment(
+    'GOOGLE_SERVER_CLIENT_ID',
+  );
+
+  /// 구글 로그인의 iOS 클라이언트 ID. Info.plist 의 URL scheme 에도 뒤집어 넣는다.
+  static const String googleIosClientId = String.fromEnvironment(
+    'GOOGLE_IOS_CLIENT_ID',
+  );
+
+  static bool get hasGoogleSignIn => googleServerClientId.isNotEmpty;
 }

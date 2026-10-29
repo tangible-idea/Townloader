@@ -24,9 +24,8 @@ class S {
 
   // ── Links ──
   String get linksTitle => isKo ? '링크' : 'Links';
-  String get linksHint => isKo
-      ? '인스타그램 링크를 붙여넣으세요 (여러 개도 돼요)'
-      : 'Paste Instagram links (several at once is fine)';
+  String get linksHint =>
+      isKo ? '인스타그램 링크를 붙여넣으세요' : 'Paste Instagram links';
   String get linksSave => isKo ? '저장' : 'Save';
   String linksSaved(int count, String category) =>
       isKo ? '$category에 $count개 저장했어요' : 'Saved $count to $category';
@@ -57,6 +56,12 @@ class S {
   String get downloadHistory => isKo ? '다운로드 목록' : 'Downloads';
   String get mapOpen => isKo ? '지도로 보기' : 'Show on map';
   String get mapShowAll => isKo ? '전체 보기' : 'Show all';
+  String get mapDeletePlace => isKo ? '이 장소 삭제' : 'Delete this place';
+  String get mapDeleteHint => isKo
+      ? '카드를 위로 밀어도 지울 수 있어요.'
+      : 'You can also swipe a card up to remove it.';
+  String get mapPlaceDeleted => isKo ? '장소를 지웠어요' : 'Place removed';
+  String get undo => isKo ? '되돌리기' : 'Undo';
   String get mapAll => isKo ? '모든 장소' : 'All places';
   String get mapNoPlaces =>
       isKo ? '이 카테고리에는 아직 찾은 장소가 없어요' : 'No places in this category yet';
@@ -205,6 +210,46 @@ class S {
   String get openFolderFailed =>
       isKo ? '저장 위치를 열 수 없습니다.' : "Couldn't open the saved location.";
   String get openFolder => isKo ? '폴더 열기' : 'Open folder';
+
+  // ── 계정 · 지도 공유 ──
+  String get accountSection => isKo ? '계정' : 'Account';
+  String get accountSignedOutDesc => isKo
+      ? '로그인하면 링크 탭에 저장한 글과 장소가 서버에 저장되고, 카테고리 지도를 링크로 공유할 수 있어요.'
+      : 'Sign in to back up your saved links and places, and share a category map as a link.';
+  String get signInGoogle => isKo ? 'Google로 로그인' : 'Sign in with Google';
+  String get signInApple => isKo ? 'Apple로 로그인' : 'Sign in with Apple';
+  String get signInUnavailable => isKo
+      ? '이 빌드에는 로그인이 설정되어 있지 않습니다.'
+      : 'Sign-in is not set up in this build.';
+  String signedInAs(String who) => isKo ? '$who 로그인됨' : 'Signed in as $who';
+  String get syncing => isKo ? '동기화 중…' : 'Syncing…';
+  String syncedAt(String time) => isKo ? '$time 동기화됨' : 'Synced $time';
+  String get syncNow => isKo ? '지금 동기화' : 'Sync now';
+  String get signOut => isKo ? '로그아웃' : 'Sign out';
+  String get signOutDesc => isKo
+      ? '기기에 저장한 링크는 그대로 남아요.'
+      : 'Links saved on this device stay here.';
+  String get deleteAccount => isKo ? '계정 삭제' : 'Delete account';
+  String get deleteAccountTitle => isKo ? '계정을 삭제할까요?' : 'Delete your account?';
+  String get deleteAccountBody => isKo
+      ? '서버에 저장한 링크와 공유한 지도가 모두 지워지고, 보낸 공유 링크도 더 열리지 않아요. 이 기기의 링크는 남습니다.'
+      : 'Your synced links and shared maps are removed from the server, and links you sent stop working. Links on this device stay.';
+  String get delete => isKo ? '삭제' : 'Delete';
+  String get shareMap => isKo ? '지도 공유' : 'Share map';
+  String shareMapTitle(String category) =>
+      isKo ? '$category 지도 공유' : 'Share the $category map';
+  String get shareMapBody => isKo
+      ? '공유하면 이 카테고리가 공개로 바뀌어요. 링크를 받은 사람은 누구나 저장한 글의 제목, 사진, 캡션(해시태그 제외), 장소, 인스타그램 원문 링크를 볼 수 있어요.'
+      : 'Sharing makes this category public. Anyone with the link can see each saved post\'s title, photos, caption (without hashtags), places and a link to the Instagram post.';
+  String get shareMapNeedsSignIn => isKo
+      ? '지도를 공유하려면 설정에서 먼저 로그인해 주세요.'
+      : 'Sign in from Settings to share a map.';
+  String get shareMapAction => isKo ? '공개하고 공유' : 'Make public and share';
+  String get sharePublicLabel => isKo ? '공개 중' : 'Public';
+  String get shareLinkAgain => isKo ? '링크 다시 보내기' : 'Send link again';
+  String get shareStop => isKo ? '공개 중지' : 'Stop sharing';
+  String get shareStopped => isKo ? '다시 비공개로 바꿨어요' : 'This map is private again';
+  String get sharedMapLoading => isKo ? '공유받은 지도를 불러오는 중…' : 'Loading shared map…';
 
   // ── Settings ──
   String get settingsTitle => isKo ? '설정' : 'Settings';

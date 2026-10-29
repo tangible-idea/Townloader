@@ -4,12 +4,15 @@ import 'package:provider/provider.dart';
 
 import 'data/hiker_client.dart';
 import 'data/ig_repository.dart';
+import 'data/maps_client.dart';
 import 'data/threads_client.dart';
 import 'l10n/strings.dart';
 import 'services/download_service.dart';
 import 'services/link_analyzer.dart';
 import 'services/file_saver.dart';
 import 'services/settings_store.dart';
+import 'services/social_sign_in.dart';
+import 'state/account_controller.dart';
 import 'state/links_controller.dart';
 import 'state/profile_controller.dart';
 import 'state/resolve_controller.dart';
@@ -45,6 +48,14 @@ class _TownloaderAppState extends State<TownloaderApp> {
     _repository,
     _analyzer,
   );
+  late final MapsClient _maps = MapsClient();
+  late final SocialSignIn _socialSignIn = SocialSignIn();
+  late final AccountController _account = AccountController(
+    client: _maps,
+    links: _links,
+    readSession: _store.readAccountSession,
+    writeSession: _store.writeAccountSession,
+  );
 
   @override
   void initState() {
@@ -52,12 +63,17 @@ class _TownloaderAppState extends State<TownloaderApp> {
     _settings.load();
     MediaFileSaver.clearShareCache();
     final isKo = S.current.isKo;
-    _links.load(isKo: isKo).then((_) => _links.resumePending());
+    _links.load(isKo: isKo).then((_) {
+      _links.resumePending();
+      _account.load();
+    });
   }
 
   @override
   void dispose() {
     _downloads.dispose();
+    _account.dispose();
+    _maps.close();
     _links.dispose();
     _analyzer.close();
     _threadsClient.close();
@@ -72,6 +88,9 @@ class _TownloaderAppState extends State<TownloaderApp> {
         ChangeNotifierProvider.value(value: _settings),
         ChangeNotifierProvider.value(value: _downloads),
         ChangeNotifierProvider.value(value: _links),
+        ChangeNotifierProvider.value(value: _account),
+        Provider.value(value: _maps),
+        Provider.value(value: _socialSignIn),
         ChangeNotifierProvider(create: (_) => ResolveController(_repository)),
         ChangeNotifierProvider(create: (_) => ProfileController(_repository)),
       ],

@@ -35,6 +35,18 @@
                 <category android:name="android.intent.category.DEFAULT"/>
                 <data android:mimeType="text/plain"/>
             </intent-filter>
+            <!-- 지도 공유 링크(App Link). 검증 파일은 maps Worker 의 /.well-known/assetlinks.json. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data
+                    android:scheme="https"
+                    android:host="townloader-maps.mark-tangible.workers.dev"
+                    android:pathPrefix="/m/"/>
+            </intent-filter>
+            <!-- 딥링크는 app_links 로 직접 받는다. Flutter 기본 라우팅이 가로채지 않게 끈다. -->
+            <meta-data android:name="flutter_deeplinking_enabled" android:value="false"/>
         </activity>
         <!-- 설치할 때 Play 서비스가 한국어 글자 인식 모델을 미리 받게 한다. -->
         <meta-data

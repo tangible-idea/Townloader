@@ -1,0 +1,25 @@
+name = "townloader-maps"
+main = "src/index.ts"
+compatibility_date = "2026-10-01"
+
+[vars]
+# 구글 로그인 ID 토큰의 aud. 앱의 serverClientId(웹 클라이언트 ID)와 iOS 클라이언트 ID 를
+# 쉼표로 이어 적는다. Google Cloud Console > API 및 서비스 > 사용자 인증 정보에서 만든다.
+GOOGLE_CLIENT_IDS = "30811544319-om1t0hq8v9uivfa5um4kdiltrgvbr5us.apps.googleusercontent.com,30811544319-voo3r3kmfsvc6lh1jp67d8udibh0120q.apps.googleusercontent.com"
+# Apple 로그인 identity token 의 aud. 앱의 번들 ID 다.
+APPLE_BUNDLE_ID = "net.tangibleidea.townloader"
+# iOS Universal Link 검증 파일에 들어갈 "<Team ID>.<번들 ID>".
+APPLE_APP_ID = "4CNWGFJJ9M.net.tangibleidea.townloader"
+ANDROID_PACKAGE = "net.tangibleidea.townloader"
+# Android App Link 검증 파일에 들어갈 서명 인증서 SHA-256. 쉼표로 이어 적는다.
+# 업로드 키, 디버그 키, 그리고 Play Console > 앱 무결성 > 앱 서명 키 인증서의 SHA-256.
+ANDROID_CERT_SHA256 = "7D:80:3E:4E:61:B1:51:49:E5:25:16:27:13:0F:E6:18:47:FE:34:B7:87:CC:78:52:20:E1:45:58:38:40:92:46,6A:31:99:7C:6A:AD:B9:D1:5D:F3:5B:08:6E:CD:09:D2:72:54:46:C1:13:D7:D8:0B:9A:21:9B:DA:49:3A:4C:13"
+APP_STORE_URL = "https://apps.apple.com/app/id6814762239"
+PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=net.tangibleidea.townloader"
+
+# 사용자, 세션, 동기화한 링크, 공유한 카테고리.
+# 표는 migrations/ 에 있고 `npx wrangler d1 migrations apply townloader-maps --remote` 로 만든다.
+[[d1_databases]]
+binding = "DB"
+database_name = "townloader-maps"
+database_id = "6679b904-eb61-46c6-b650-b01222a8879d"

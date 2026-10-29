@@ -71,5 +71,40 @@ class PlacesClient {
     ];
   }
 
+  /// 저장한 글의 짧은 대표 제목. 못 지으면 null 이고, 오류도 null 로 넘긴다(제목은 없어도 된다).
+  Future<String?> title({
+    required String code,
+    required bool isKo,
+    String? caption,
+    List<String> places = const [],
+    List<String> lines = const [],
+  }) async {
+    if (!isConfigured) return null;
+    try {
+      final response = await _http
+          .post(
+            Uri.parse('$_baseUrl/title'),
+            headers: {
+              'content-type': 'application/json',
+              'x-app-token': _appToken,
+            },
+            body: jsonEncode({
+              'code': code,
+              'lang': isKo ? 'ko' : 'en',
+              'caption': caption ?? '',
+              'places': places,
+              'lines': lines,
+            }),
+          )
+          .timeout(const Duration(seconds: 30));
+      if (response.statusCode != 200) return null;
+      final data = jsonDecode(utf8.decode(response.bodyBytes));
+      final title = data is Map ? data['title'] : null;
+      return title is String && title.trim().isNotEmpty ? title.trim() : null;
+    } on Exception {
+      return null;
+    }
+  }
+
   void close() => _http.close();
 }

@@ -70,6 +70,7 @@ class SavedLink {
     required this.category,
     required this.savedAt,
     this.status = LinkStatus.analyzing,
+    this.title,
     this.author,
     this.caption,
     this.coverUrl,
@@ -89,6 +90,7 @@ class SavedLink {
       'ready' => LinkStatus.ready,
       _ => LinkStatus.failed,
     },
+    title: json['title'] as String?,
     author: json['author'] as String?,
     caption: json['caption'] as String?,
     coverUrl: json['coverUrl'] as String?,
@@ -109,6 +111,9 @@ class SavedLink {
   final String category;
   final DateTime savedAt;
   final LinkStatus status;
+
+  /// 글을 대표하는 짧은 제목("예쁜 보은 카페 모음.ZIP"). 분석이 끝나면 AI 가 짓는다.
+  final String? title;
   final String? author;
   final String? caption;
   final String? coverUrl;
@@ -130,6 +135,7 @@ class SavedLink {
   SavedLink copyWith({
     String? category,
     LinkStatus? status,
+    String? title,
     String? author,
     String? caption,
     String? coverUrl,
@@ -143,6 +149,7 @@ class SavedLink {
     category: category ?? this.category,
     savedAt: savedAt,
     status: status ?? this.status,
+    title: title ?? this.title,
     author: author ?? this.author,
     caption: caption ?? this.caption,
     coverUrl: coverUrl ?? this.coverUrl,
@@ -157,6 +164,7 @@ class SavedLink {
     'category': category,
     'savedAt': savedAt.toIso8601String(),
     'status': status.name,
+    'title': title,
     'author': author,
     'caption': caption,
     'coverUrl': coverUrl,

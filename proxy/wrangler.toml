@@ -26,3 +26,21 @@ namespace_id = "1001"
   [ratelimits.simple]
   limit = 60
   period = 60
+
+# 댓글 읽어주기(/tts)의 IP 별 분당 제한.
+[[ratelimits]]
+name = "TTS_LIMITER"
+namespace_id = "1002"
+
+  [ratelimits.simple]
+  limit = 30
+  period = 60
+
+# 저장한 글 대표 제목(/title)의 IP 별 분당 제한.
+[[ratelimits]]
+name = "TITLE_LIMITER"
+namespace_id = "1003"
+
+  [ratelimits.simple]
+  limit = 60
+  period = 60

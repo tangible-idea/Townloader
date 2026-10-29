@@ -7,6 +7,8 @@
 #   make run DEVICE=macos    기기 지정
 #   make ios                 실제 iPhone/iPad에 Release 빌드·설치·실행
 #   make ios DEVICE=<ID>     여러 실기기 중 하나 지정
+#   make android             연결된 Android 기기에 Release 빌드·설치·실행
+#   make android DEVICE=<ID> 여러 기기 중 하나 지정
 #   make macos               macOS에서 실행
 #   make devices             기기 목록과 ID 확인
 #   make test / make analyze
@@ -18,13 +20,23 @@ DEFINES  := $(if $(wildcard $(ENV_FILE)),--dart-define-from-file=$(ENV_FILE),)
 DEVICE     ?=
 DEVICE_ARG := $(if $(DEVICE),-d $(DEVICE),)
 
-.PHONY: run ios macos devices test analyze ipa apk aab ipa-internal apk-internal env-check
+.PHONY: run ios android macos devices test analyze ipa apk aab ipa-internal apk-internal env-check
 
 run:
 	flutter run $(DEFINES) $(DEVICE_ARG)
 
 ios:
 	python3 scripts/run_ios.py --device "$(DEVICE)" --env-file "$(ENV_FILE)"
+
+# DEVICE 를 안 주면 연결된 Android 기기(에뮬레이터 포함) 중 첫 번째에 설치한다.
+ANDROID_DEVICE = $(or $(DEVICE),$(shell flutter devices --machine 2>/dev/null | python3 -c 'import json,sys; print(next((d["id"] for d in json.load(sys.stdin) if d["targetPlatform"].startswith("android") and d["isSupported"]), ""))'))
+
+android:
+	@if [ -z "$(ANDROID_DEVICE)" ]; then \
+		echo "연결된 Android 기기가 없습니다. USB 디버깅을 켜고 연결한 뒤 make devices 로 확인하세요."; \
+		exit 1; \
+	fi
+	flutter run --release $(DEFINES) -d $(ANDROID_DEVICE)
 
 macos:
 	$(MAKE) run DEVICE=macos

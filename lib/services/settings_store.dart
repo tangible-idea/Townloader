@@ -60,6 +60,7 @@ class SettingsStore {
   static const _keySaveToGallery = 'save_to_gallery';
   static const _keyPersonalUseAck = 'personal_use_ack';
   static const _keyAiSummaryConsent = 'ai_summary_consent';
+  static const _keyAccountSession = 'account_session';
 
   /// 키체인이 정말 동작하는지 한 번만 확인하고 결과를 재사용한다.
   static const _canary = '__townloader_probe';
@@ -119,6 +120,12 @@ class SettingsStore {
 
   Future<bool> writeAiSummaryConsent() =>
       _write(_keyAiSummaryConsent, 'true');
+
+  /// 지도 동기화 계정의 세션(JSON). 로그아웃하면 지운다.
+  Future<String?> readAccountSession() => _read(_keyAccountSession);
+
+  Future<bool> writeAccountSession(String? value) =>
+      _write(_keyAccountSession, value ?? '');
 
   Future<String?> _read(String key) async {
     if (await backend == SettingsBackend.keychain) {

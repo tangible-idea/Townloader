@@ -30,6 +30,9 @@ class LinkAnalyzer {
   /// 사진을 한 번에 몇 장씩 받아 읽을지.
   static const int _batch = 4;
 
+  /// 글마다 첫 사진에서 읽은 큰 글씨 줄. 제목을 지을 때 쓴다(사진에 제목이 적힌 글이 많다).
+  final Map<String, List<String>> _headlines = {};
+
   /// [post] 의 사진 순서대로 쓸 썸네일 주소. [SavedPlace.imageIndex] 가 이 순번이다.
   static List<String> imageUrlsOf(IgPost post) => [
     for (final item in post.items.take(maxImages))
@@ -46,6 +49,9 @@ class LinkAnalyzer {
       final results = await Future.wait(batch.map((i) => _readImage(urls[i])));
       for (final (offset, lines) in results.indexed) {
         if (lines.isEmpty) continue;
+        if (batch[offset] == 0) {
+          _headlines[post.code ?? post.pk] = headlinesOf(lines);
+        }
         images.add({
           'index': batch[offset],
           'lines': [for (final line in lines) line.toJson()],
@@ -69,6 +75,22 @@ class LinkAnalyzer {
       'images': images,
     });
   }
+
+  /// 글자가 큰 줄부터 몇 줄. 표지 사진의 제목이 대개 가장 크다.
+  static List<String> headlinesOf(List<OcrLine> lines) {
+    final sorted = [...lines]..sort((a, b) => b.height.compareTo(a.height));
+    return [for (final line in sorted.take(4)) line.text];
+  }
+
+  /// 저장한 글의 짧은 대표 제목. 이번 실행에서 분석한 글이면 표지 글씨도 함께 보낸다.
+  Future<String?> title(SavedLink link, {required bool isKo}) =>
+      _places.title(
+        code: link.code,
+        isKo: isKo,
+        caption: link.caption,
+        places: [for (final place in link.places) place.name],
+        lines: _headlines.remove(link.code) ?? const [],
+      );
 
   /// 사진 한 장의 글자 줄. 받지 못하거나 읽지 못하면 빈 목록이다.
   Future<List<OcrLine>> _readImage(String url) async {

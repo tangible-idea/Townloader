@@ -18,16 +18,50 @@ import 'widgets/state_views.dart';
 ///
 /// 모든 장소에 작은 점을 찍고, 자리가 나는 곳에는 사진 카드를 띄운다(겹치면 Mapbox 가
 /// 알아서 숨기고, 확대할수록 더 많이 보인다). 아래 카드를 넘기면 그 장소로 날아간다.
+///
+/// 한 번에 한 카테고리만 보여 주고, 그 안의 글마다 점 색을 다르게 한다.
+/// [links] 를 주면 내 Links 대신 그 글들을 그린다(공유받은 지도).
 class PlacesMapScreen extends StatefulWidget {
-  const PlacesMapScreen({super.key});
+  const PlacesMapScreen({
+    super.key,
+    this.links,
+    this.category,
+    this.title,
+    this.initialLink,
+    this.initialPlace,
+  });
 
-  static Future<void> open(BuildContext context) => Navigator.of(
-    context,
-  ).push(MaterialPageRoute<void>(builder: (_) => const PlacesMapScreen()));
+  final List<SavedLink>? links;
 
-  /// 카테고리 점 색. Links 탭의 카테고리 순서대로 돌려 쓴다. 밝은 지도 위에서 서로
-  /// 구분되도록 고른 색이다.
-  static const List<int> categoryColors = [
+  /// 보여 줄 카테고리. 없으면 [links] 를 모두 그린다.
+  final String? category;
+  final String? title;
+
+  /// 처음 열 때 맞춰 보여 줄 글. 지정하면 이 글의 장소들로 날아가고 아래 카드도
+  /// 이 글의 장소부터 시작한다.
+  final SavedLink? initialLink;
+
+  /// 처음 열 때 바로 가리킬 장소.
+  final SavedPlace? initialPlace;
+
+  /// [link] 를 주면 그 글의 카테고리를, 아니면 [category] 를 연다.
+  static Future<void> open(
+    BuildContext context, {
+    String? category,
+    SavedLink? link,
+    SavedPlace? place,
+  }) => Navigator.of(context).push(
+    MaterialPageRoute<void>(
+      builder: (_) => PlacesMapScreen(
+        category: link?.category ?? category,
+        initialLink: link,
+        initialPlace: place,
+      ),
+    ),
+  );
+
+  /// 글마다 돌려 쓰는 점 색. 밝은 지도 위에서 서로 구분되도록 고른 색이다.
+  static const List<int> itemColors = [
     0xFF0B7A5E, // 초록
     0xFFE8590C, // 주황
     0xFF1C7ED6, // 파랑
@@ -38,10 +72,7 @@ class PlacesMapScreen extends StatefulWidget {
     0xFF5C3B1E, // 갈색
   ];
 
-  static int colorOf(List<String> categories, String category) {
-    final index = categories.indexOf(category);
-    return categoryColors[(index < 0 ? 0 : index) % categoryColors.length];
-  }
+  static int colorAt(int index) => itemColors[index % itemColors.length];
 
   @override
   State<PlacesMapScreen> createState() => _PlacesMapScreenState();
@@ -58,24 +89,43 @@ class _Pin {
 }
 
 class _PlacesMapScreenState extends State<PlacesMapScreen> {
-  late final List<String> _allCategories = context
-      .read<LinksController>()
-      .categories;
   late final List<_Pin> _pins = [
-    for (final link in context.read<LinksController>().allLinks)
-      for (final place in link.places) _Pin(place, link),
+    for (final link
+        in widget.links ?? context.read<LinksController>().allLinks)
+      if (widget.category == null || link.category == widget.category)
+        for (final place in link.places) _Pin(place, link),
   ];
 
-  /// 장소가 하나라도 있는 카테고리. 범례에 보인다.
-  late final List<String> _categories = [
-    for (final category in _allCategories)
-      if (_pins.any((pin) => pin.link.category == category)) category,
-  ];
+  /// 처음 그릴 때의 글 순서. 장소를 지워도 남은 글의 색이 바뀌지 않게 고정한다.
+  late final List<String> _linkOrder = {
+    for (final pin in _pins) pin.link.code,
+  }.toList();
 
-  int _colorOf(String category) =>
-      PlacesMapScreen.colorOf(_allCategories, category);
+  /// 내 장소를 보고 있을 때만 지울 수 있다. 공유받은 지도는 보기만 한다.
+  bool get _editable => widget.links == null;
+
+  /// 장소가 하나라도 남은 글. 범례에 보인다. 장소를 지우면 줄어든다.
+  List<SavedLink> get _legendLinks {
+    final seen = <String>{};
+    return [
+      for (final pin in _pins)
+        if (seen.add(pin.link.code)) pin.link,
+    ];
+  }
+
+  int _colorOf(SavedLink link) =>
+      PlacesMapScreen.colorAt(math.max(0, _linkOrder.indexOf(link.code)));
+
+  /// 범례와 카드에 쓰는 글 이름. 대표 제목, 없으면 계정명.
+  static String _nameOf(SavedLink link) =>
+      link.title ?? (link.author == null ? link.code : '@${link.author}');
   final _cards = PlaceCardImage();
-  final _pages = PageController(viewportFraction: 0.86);
+  late final int _initialIndex = _findInitialIndex();
+  PageController? _pageController;
+  PageController get _pages => _pageController ??= PageController(
+    viewportFraction: 0.86,
+    initialPage: _initialIndex,
+  );
 
   /// 밝은 하늘을 입힌 지도 스타일. 지도가 만들어지는 동안 미리 받아 둔다.
   late final Future<String?> _style = _lightSkyStyle();
@@ -83,16 +133,47 @@ class _PlacesMapScreenState extends State<PlacesMapScreen> {
   bool _pinsAdded = false;
 
   MapboxMap? _map;
+  CircleAnnotationManager? _dotLayer;
   PointAnnotationManager? _cardLayer;
   Cancelable? _tapSubscription;
-  final Map<String, int> _pinByAnnotation = {};
-  int _current = 0;
+
+  /// 지도에 올린 카드와 점. 장소를 지울 때 함께 지운다.
+  final Map<String, _Pin> _pinByAnnotation = {};
+  final Map<_Pin, PointAnnotation> _cardOf = {};
+  final Map<_Pin, CircleAnnotation> _dotOf = {};
+  late int _current = _initialIndex;
+
+  int _findInitialIndex() {
+    final targetPlace = widget.initialPlace;
+    final targetCode = widget.initialLink?.code;
+    if (targetPlace != null) {
+      final index = _pins.indexWhere(
+        (pin) =>
+            (targetCode == null || pin.link.code == targetCode) &&
+            identical(pin.place, targetPlace),
+      );
+      if (index >= 0) return index;
+      final byValue = _pins.indexWhere(
+        (pin) =>
+            (targetCode == null || pin.link.code == targetCode) &&
+            pin.place.name == targetPlace.name &&
+            pin.place.lat == targetPlace.lat &&
+            pin.place.lng == targetPlace.lng,
+      );
+      if (byValue >= 0) return byValue;
+    }
+    if (targetCode != null) {
+      final index = _pins.indexWhere((pin) => pin.link.code == targetCode);
+      if (index >= 0) return index;
+    }
+    return 0;
+  }
 
   @override
   void dispose() {
     _tapSubscription?.cancel();
     _cards.close();
-    _pages.dispose();
+    _pageController?.dispose();
     super.dispose();
   }
 
@@ -149,7 +230,7 @@ class _PlacesMapScreenState extends State<PlacesMapScreen> {
   Future<void> _onMapCreated(MapboxMap map) async {
     _map = map;
     // 처음에는 멀리서 지구본을 보여 주고, 장소들 쪽으로 날아간다.
-    final first = _pins.isEmpty ? null : _pins.first.point;
+    final first = _pins.isEmpty ? null : _pins[_current].point;
     await map.setCamera(
       CameraOptions(
         center: first ?? Point(coordinates: Position(127.5, 36.5)),
@@ -177,42 +258,63 @@ class _PlacesMapScreenState extends State<PlacesMapScreen> {
 
     // 점은 늘 보이고, 카드는 겹치지 않는 것만 보인다.
     final dots = await map.annotations.createCircleAnnotationManager();
-    await dots.createMulti([
-      for (final pin in _pins)
-        CircleAnnotationOptions(
-          geometry: pin.point,
-          circleRadius: 5.5,
-          circleColor: _colorOf(pin.link.category),
-          circleStrokeWidth: 2,
-          circleStrokeColor: 0xFFFFFFFF,
-        ),
+    _dotLayer = dots;
+    final created = await dots.createMulti([
+      for (final pin in _pins) _dotOptions(pin),
     ]);
+    for (final (index, dot) in created.indexed) {
+      if (dot != null && index < _pins.length) _dotOf[_pins[index]] = dot;
+    }
     final cards = await map.annotations.createPointAnnotationManager();
     await cards.setIconAllowOverlap(false);
     await cards.setIconIgnorePlacement(false);
     _cardLayer = cards;
     _tapSubscription = cards.tapEvents(
       onTap: (annotation) {
-        final index = _pinByAnnotation[annotation.id];
-        if (index != null) _select(index, fromMap: true);
+        final pin = _pinByAnnotation[annotation.id];
+        final index = pin == null ? -1 : _pins.indexOf(pin);
+        if (index >= 0) _select(index, fromMap: true);
       },
     );
 
-    await _fitAll();
+    await _flyToInitial();
     await _addCards();
+  }
+
+  CircleAnnotationOptions _dotOptions(_Pin pin) => CircleAnnotationOptions(
+    geometry: pin.point,
+    circleRadius: 5.5,
+    circleColor: _colorOf(pin.link),
+    circleStrokeWidth: 2,
+    circleStrokeColor: 0xFFFFFFFF,
+  );
+
+  Future<void> _flyToInitial() {
+    if (widget.initialPlace != null) {
+      return _fitPoints([_pins[_current].point]);
+    }
+    final code = widget.initialLink?.code;
+    if (code != null) {
+      final linkPoints = [
+        for (final pin in _pins)
+          if (pin.link.code == code) pin.point,
+      ];
+      if (linkPoints.isNotEmpty) return _fitPoints(linkPoints);
+    }
+    return _fitAll();
   }
 
   /// 모든 장소(또는 [category] 의 장소)가 한 화면에 들어오게. 나라를 넘나들면 지구본이
   /// 보일 만큼 멀리서 본다.
-  Future<void> _fitAll([String? category]) async {
+  Future<void> _fitAll([SavedLink? link]) => _fitPoints([
+    for (final pin in _pins)
+      if (link == null || pin.link.code == link.code) pin.point,
+  ]);
+
+  Future<void> _fitPoints(List<Point> points) async {
     final map = _map;
-    if (map == null) return;
+    if (map == null || points.isEmpty) return;
     final size = MediaQuery.sizeOf(context);
-    final points = [
-      for (final pin in _pins)
-        if (category == null || pin.link.category == category) pin.point,
-    ];
-    if (points.isEmpty) return;
     final camera = await map.cameraForCoordinatesPadding(
       points,
       CameraOptions(),
@@ -230,29 +332,143 @@ class _PlacesMapScreenState extends State<PlacesMapScreen> {
   }
 
   /// 카드는 그림을 만드는 데 시간이 걸려서, 만들어지는 대로 하나씩 올린다.
-  /// 먼저 저장한 글의 장소가 겹칠 때 이기도록 순서를 정렬 키로 쓴다.
+  /// 눌러서 들어온 글의 장소를 먼저 그리고, 겹칠 때도 이기도록 정렬 키를 앞세운다.
   Future<void> _addCards() async {
     final pixelRatio = MediaQuery.devicePixelRatioOf(context);
-    for (final (index, pin) in _pins.indexed) {
-      final image = await _cards.render(
-        title: pin.place.name,
-        subtitle: pin.link.author == null ? '' : '@${pin.link.author}',
-        photoUrl: pin.link.photoFor(pin.place),
-        pixelRatio: pixelRatio,
-      );
-      final layer = _cardLayer;
-      if (!mounted || layer == null) return;
-      final annotation = await layer.create(
-        PointAnnotationOptions(
-          geometry: pin.point,
-          image: image,
-          iconAnchor: IconAnchor.BOTTOM,
-          iconOffset: [0, -4],
-          symbolSortKey: index.toDouble(),
+    final focusCode = widget.initialLink?.code;
+    final order = [
+      if (widget.initialPlace != null && _pins.isNotEmpty) _current,
+      for (final (index, pin) in _pins.indexed)
+        if (index != _current && focusCode != null && pin.link.code == focusCode)
+          index,
+      for (final (index, pin) in _pins.indexed)
+        if ( !(widget.initialPlace != null && index == _current) &&
+            !(focusCode != null && pin.link.code == focusCode))
+          index,
+    ];
+    final pins = [for (final index in order) _pins[index]];
+    for (final (rank, pin) in pins.indexed) {
+      await _addCard(pin, rank.toDouble(), pixelRatio);
+      if (!mounted) return;
+    }
+  }
+
+  Future<void> _addCard(_Pin pin, double sortKey, double pixelRatio) async {
+    final image = await _cards.render(
+      title: pin.place.name,
+      subtitle: pin.link.author == null ? '' : '@${pin.link.author}',
+      photoUrl: pin.link.photoFor(pin.place),
+      pixelRatio: pixelRatio,
+    );
+    final layer = _cardLayer;
+    // 카드를 그리는 사이에 지운 장소면 올리지 않는다.
+    if (!mounted || layer == null || !_pins.contains(pin)) return;
+    final annotation = await layer.create(
+      PointAnnotationOptions(
+        geometry: pin.point,
+        image: image,
+        iconAnchor: IconAnchor.BOTTOM,
+        iconOffset: [0, -4],
+        symbolSortKey: sortKey,
+      ),
+    );
+    _pinByAnnotation[annotation.id] = pin;
+    _cardOf[pin] = annotation;
+  }
+
+  /// 길게 눌렀을 때. 지울지 한 번 묻는다.
+  Future<void> _confirmDelete(_Pin pin) async {
+    final s = S.of(context);
+    final delete = await showModalBottomSheet<bool>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              title: Text(pin.place.name),
+              subtitle: Text(s.mapDeleteHint),
+            ),
+            ListTile(
+              leading: Icon(
+                Icons.delete_outline,
+                color: Theme.of(context).colorScheme.error,
+              ),
+              title: Text(
+                s.mapDeletePlace,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+              onTap: () => Navigator.of(context).pop(true),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (delete == true) await _delete(pin);
+  }
+
+  /// 장소를 목록과 지도에서 지우고 저장한다. 잠시 되돌릴 수 있다.
+  Future<void> _delete(_Pin pin) async {
+    final index = _pins.indexOf(pin);
+    if (index < 0) return;
+    final s = S.of(context);
+    final links = context.read<LinksController>();
+    final messenger = ScaffoldMessenger.of(context);
+
+    setState(() {
+      _pins.removeAt(index);
+      if (_current > index || _current >= _pins.length) {
+        _current = math.max(0, _current - 1);
+      }
+    });
+    _removeFromMap(pin);
+    final at = await links.removePlace(pin.link.code, pin.place);
+
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(s.mapPlaceDeleted),
+          behavior: SnackBarBehavior.floating,
+          action: at < 0
+              ? null
+              : SnackBarAction(
+                  label: s.undo,
+                  onPressed: () => _restore(links, pin, index, at),
+                ),
         ),
       );
-      _pinByAnnotation[annotation.id] = index;
+  }
+
+  /// 되돌리기는 지도를 닫은 뒤에 눌러도 저장은 되돌린다.
+  Future<void> _restore(
+    LinksController links,
+    _Pin pin,
+    int index,
+    int placeIndex,
+  ) async {
+    await links.insertPlace(
+      pin.link.code,
+      pin.place,
+      placeIndex,
+    );
+    if (!mounted) return;
+    setState(() => _pins.insert(index.clamp(0, _pins.length), pin));
+    final dot = await _dotLayer?.create(_dotOptions(pin));
+    if (dot != null) _dotOf[pin] = dot;
+    if (!mounted) return;
+    await _addCard(pin, 0, MediaQuery.devicePixelRatioOf(context));
+  }
+
+  void _removeFromMap(_Pin pin) {
+    final card = _cardOf.remove(pin);
+    if (card != null) {
+      _pinByAnnotation.remove(card.id);
+      _cardLayer?.delete(card);
     }
+    final dot = _dotOf.remove(pin);
+    if (dot != null) _dotLayer?.delete(dot);
   }
 
   void _select(int index, {bool fromMap = false}) {
@@ -277,7 +493,7 @@ class _PlacesMapScreenState extends State<PlacesMapScreen> {
 
     if (!AppConfig.hasMapbox) {
       return Scaffold(
-        appBar: AppBar(title: Text(s.mapAll)),
+        appBar: AppBar(title: Text(widget.title ?? widget.category ?? s.mapAll)),
         body: MessageView(icon: Icons.public_off, title: s.mapUnavailable),
       );
     }
@@ -317,7 +533,7 @@ class _PlacesMapScreenState extends State<PlacesMapScreen> {
                               vertical: 9,
                             ),
                             child: Text(
-                              '${s.mapAll} · ${s.linksPlaceCount(_pins.length)}',
+                              '${widget.title ?? widget.category ?? s.mapAll} · ${s.linksPlaceCount(_pins.length)}',
                               overflow: TextOverflow.ellipsis,
                               style: theme.textTheme.titleSmall,
                             ),
@@ -334,22 +550,22 @@ class _PlacesMapScreenState extends State<PlacesMapScreen> {
                     ],
                   ),
                 ),
-                // 범례: 카테고리 색과 장소 수. 누르면 그 카테고리 장소로 날아간다.
-                if (_categories.isNotEmpty)
+                // 범례: 글마다 색과 장소 수. 누르면 그 글의 장소로 날아간다.
+                if (_legendLinks.length > 1)
                   SizedBox(
                     height: 48,
                     child: ListView(
                       scrollDirection: Axis.horizontal,
                       padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
                       children: [
-                        for (final category in _categories) ...[
+                        for (final link in _legendLinks) ...[
                           _LegendChip(
-                            label: category,
+                            label: _nameOf(link),
                             count: _pins
-                                .where((pin) => pin.link.category == category)
+                                .where((pin) => pin.link.code == link.code)
                                 .length,
-                            color: Color(_colorOf(category)),
-                            onTap: () => _fitAll(category),
+                            color: Color(_colorOf(link)),
+                            onTap: () => _fitAll(link),
                           ),
                           const SizedBox(width: 6),
                         ],
@@ -383,12 +599,26 @@ class _PlacesMapScreenState extends State<PlacesMapScreen> {
                     onPageChanged: (index) {
                       if (index != _current) _select(index);
                     },
-                    itemBuilder: (context, index) => _PlaceTile(
-                      pin: _pins[index],
-                      color: Color(_colorOf(_pins[index].link.category)),
-                      selected: index == _current,
-                      onTap: () => _select(index),
-                    ),
+                    itemBuilder: (context, index) {
+                      final pin = _pins[index];
+                      final tile = _PlaceTile(
+                        pin: pin,
+                        color: Color(_colorOf(pin.link)),
+                        selected: index == _current,
+                        onTap: () => _select(index),
+                        onLongPress: _editable
+                            ? () => _confirmDelete(pin)
+                            : null,
+                      );
+                      if (!_editable) return tile;
+                      // 위로 밀면 바로 지운다. 옆으로 넘기는 것과 겹치지 않는다.
+                      return Dismissible(
+                        key: ObjectKey(pin),
+                        direction: DismissDirection.up,
+                        onDismissed: (_) => _delete(pin),
+                        child: tile,
+                      );
+                    },
                   ),
                 ),
               ),
@@ -405,6 +635,7 @@ class _PlaceTile extends StatelessWidget {
     required this.color,
     required this.selected,
     required this.onTap,
+    this.onLongPress,
   });
 
   final _Pin pin;
@@ -413,6 +644,9 @@ class _PlaceTile extends StatelessWidget {
   final Color color;
   final bool selected;
   final VoidCallback onTap;
+
+  /// 내 지도에서만 있다. 길게 누르면 지울지 묻는다.
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -431,6 +665,7 @@ class _PlaceTile extends StatelessWidget {
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onTap,
+          onLongPress: onLongPress,
           child: Row(
             children: [
               SizedBox(
@@ -479,7 +714,7 @@ class _PlaceTile extends StatelessWidget {
                           Flexible(
                             child: Text(
                               [
-                                pin.link.category,
+                                if (pin.link.title != null) pin.link.title!,
                                 if (pin.link.author != null)
                                   '@${pin.link.author}',
                               ].join(' · '),

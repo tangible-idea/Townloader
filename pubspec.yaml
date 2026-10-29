@@ -46,6 +46,9 @@ dependencies:
   share_plus: ^13.3.0
   video_player: ^2.11.1
   mapbox_maps_flutter: ^3.33.1
+  google_sign_in: ^7.2.0
+  sign_in_with_apple: ^8.2.0
+  app_links: ^7.2.2
 
 dependency_overrides:
   path_provider_foundation: 2.5.1
