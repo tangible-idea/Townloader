@@ -44,3 +44,8 @@ namespace_id = "1003"
   [ratelimits.simple]
   limit = 60
   period = 60
+
+# 이 Worker 자신. /places 가 좌표 찾기를 몇 개씩 따로 실행해, 실행당 바깥 요청 한도(무료 50)를 나눠 쓴다.
+[[services]]
+binding = "SELF"
+service = "townloader"
