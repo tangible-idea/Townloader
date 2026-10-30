@@ -2,7 +2,8 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/painting.dart';
-import 'package:http/http.dart' as http;
+
+import '../../services/image_disk_cache.dart';
 
 /// 지도 위에 띄우는 장소 카드(사진 + 이름 + 한 줄 + 꼬리)를 PNG 로 그린다.
 ///
@@ -10,10 +11,9 @@ import 'package:http/http.dart' as http;
 /// 아이콘으로 올린다. 화면 배율([pixelRatio])로 그리면 iOS·Android 모두 카드가 논리
 /// 크기 그대로 보인다(SDK 가 PNG 를 화면 배율 이미지로 읽는다).
 class PlaceCardImage {
-  PlaceCardImage({http.Client? httpClient})
-    : _http = httpClient ?? http.Client();
+  /// 사진 하나가 이보다 늦으면 회색 칸으로 그려 다른 카드를 붙잡지 않는다.
+  static const _photoTimeout = Duration(seconds: 8);
 
-  final http.Client _http;
   final Map<String, Future<ui.Image?>> _photos = {};
 
   static const double width = 128;
@@ -131,21 +131,22 @@ class PlaceCardImage {
     textDirection: TextDirection.ltr,
   );
 
-  /// 같은 사진은 한 번만 받는다. 받지 못하면 회색 칸으로 그린다.
+  /// 같은 사진은 한 번만 받고, 디스크에 남겨 다음에 지도를 열 때는 바로 읽는다.
+  /// 받지 못하면 회색 칸으로 그린다.
   Future<ui.Image?> _photo(String url, double pixelRatio) =>
       _photos.putIfAbsent(url, () async {
         try {
-          final response = await _http.get(Uri.parse(url));
-          if (response.statusCode != 200) return null;
+          final file = await ImageDiskCache.instance
+              .fileFor(url)
+              .timeout(_photoTimeout);
           final codec = await ui.instantiateImageCodec(
-            response.bodyBytes,
+            await file.readAsBytes(),
             targetWidth: (width * pixelRatio).round(),
           );
           return (await codec.getNextFrame()).image;
-        } on Exception {
+        } catch (_) {
+          await ImageDiskCache.instance.evict(url).catchError((_) {});
           return null;
         }
       });
-
-  void close() => _http.close();
 }

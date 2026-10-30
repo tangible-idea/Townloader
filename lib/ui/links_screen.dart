@@ -14,6 +14,7 @@ import '../state/resolve_controller.dart';
 import 'downloads_screen.dart';
 import 'places_map_screen.dart';
 import 'widgets/network_thumb.dart';
+import 'widgets/place_category_icon.dart';
 import 'widgets/state_views.dart';
 
 /// 링크를 붙여넣어 카테고리별로 모으고, 글마다 찾은 장소를 보여 준다.
@@ -29,6 +30,9 @@ class LinksScreen extends StatefulWidget {
 
 class LinksScreenState extends State<LinksScreen> {
   final _input = TextEditingController();
+
+  /// 장소 목록을 펼친 링크. 카드가 화면 밖으로 나갔다 돌아와도 펼친 채로 두려고 여기서 들고 있다.
+  final _expandedPlaces = <String>{};
 
   @override
   void dispose() {
@@ -316,6 +320,12 @@ class LinksScreenState extends State<LinksScreen> {
                               context.read<LinksController>().remove(item),
                           child: _LinkCard(
                             link: item,
+                            placesExpanded: _expandedPlaces.contains(item.code),
+                            onTogglePlaces: () => setState(() {
+                              if (!_expandedPlaces.remove(item.code)) {
+                                _expandedPlaces.add(item.code);
+                              }
+                            }),
                             onRead: () => _openInRead(item.url),
                             onShare: (buttonContext) => _shareMap(
                               buttonContext,
@@ -425,11 +435,15 @@ class LinksScreenState extends State<LinksScreen> {
 class _LinkCard extends StatelessWidget {
   const _LinkCard({
     required this.link,
+    required this.placesExpanded,
+    required this.onTogglePlaces,
     required this.onShare,
     this.onRead,
   });
 
   final SavedLink link;
+  final bool placesExpanded;
+  final VoidCallback onTogglePlaces;
   final void Function(BuildContext buttonContext) onShare;
   final VoidCallback? onRead;
 
@@ -534,22 +548,11 @@ class _LinkCard extends StatelessWidget {
               ),
               if (link.places.isNotEmpty) ...[
                 const SizedBox(height: 10),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: [
-                    for (final place in link.places)
-                      _PlaceChip(
-                        place: place,
-                        onTap: canOpenMap
-                            ? () => PlacesMapScreen.open(
-                                context,
-                                link: link,
-                                place: place,
-                              )
-                            : null,
-                      ),
-                  ],
+                _PlaceChips(
+                  link: link,
+                  canOpenMap: canOpenMap,
+                  expanded: placesExpanded,
+                  onToggle: onTogglePlaces,
                 ),
               ],
             ],
@@ -614,8 +617,13 @@ class _LinkCard extends StatelessWidget {
         if (category != link.category) category,
     ];
     return PopupMenuButton<String>(
-      padding: EdgeInsets.zero,
-      constraints: const BoxConstraints.tightFor(width: 32, height: 32),
+      // `constraints` 는 펼친 메뉴의 크기라서 버튼 크기는 style 로 줄인다.
+      style: IconButton.styleFrom(
+        padding: EdgeInsets.zero,
+        minimumSize: const Size(32, 32),
+        fixedSize: const Size(32, 32),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
       icon: const Icon(Icons.more_vert, size: 20),
       onSelected: (value) {
         switch (value) {
@@ -663,6 +671,77 @@ class _LinkCard extends StatelessWidget {
   }
 }
 
+/// 장소가 많으면 카드가 너무 길어지므로 [_collapsedCount]곳까지만 보이고 나머지는 펼쳐서 본다.
+class _PlaceChips extends StatelessWidget {
+  const _PlaceChips({
+    required this.link,
+    required this.canOpenMap,
+    required this.expanded,
+    required this.onToggle,
+  });
+
+  static const _collapsedCount = 15;
+
+  final SavedLink link;
+  final bool canOpenMap;
+  final bool expanded;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = S.of(context);
+    final theme = Theme.of(context);
+    final places = link.places;
+    final hidden = places.length - _collapsedCount;
+    final visible = expanded || hidden <= 0
+        ? places
+        : places.take(_collapsedCount);
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      children: [
+        for (final place in visible)
+          _PlaceChip(
+            place: place,
+            onTap: canOpenMap
+                ? () => PlacesMapScreen.open(context, link: link, place: place)
+                : null,
+          ),
+        if (hidden > 0)
+          Material(
+            color: theme.colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(999),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: onToggle,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(8, 4, 6, 4),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      expanded
+                          ? s.linksShowLessPlaces
+                          : s.linksShowMorePlaces(hidden),
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: theme.colorScheme.primary,
+                      ),
+                    ),
+                    Icon(
+                      expanded ? Icons.expand_less : Icons.expand_more,
+                      size: 16,
+                      color: theme.colorScheme.primary,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
 class _PlaceChip extends StatelessWidget {
   const _PlaceChip({required this.place, this.onTap});
 
@@ -673,12 +752,14 @@ class _PlaceChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final s = S.of(context);
-    final icon = switch (place.source) {
-      PlaceSource.tag => Icons.place,
-      PlaceSource.image => Icons.image_outlined,
-      PlaceSource.caption => Icons.notes,
-    };
-    final hasPhoto = place.photoUrl != null && place.photoUrl!.isNotEmpty;
+    // 사진은 받지 않고 업종 아이콘으로 보여 준다. 업종을 모르면 장소를 찾은 곳의 아이콘.
+    final icon =
+        placeCategoryIcon(place.category) ??
+        switch (place.source) {
+          PlaceSource.tag => Icons.place_outlined,
+          PlaceSource.image => Icons.image_outlined,
+          PlaceSource.caption => Icons.notes,
+        };
     return Tooltip(
       message: [
         place.category ?? '',
@@ -693,24 +774,15 @@ class _PlaceChip extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           child: Padding(
-            padding: EdgeInsets.fromLTRB(hasPhoto ? 4 : 8, 4, 8, 4),
+            padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (hasPhoto)
-                  ClipOval(
-                    child: SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: NetworkThumb(url: place.photoUrl),
-                    ),
-                  )
-                else
-                  Icon(
-                    icon,
-                    size: 14,
-                    color: theme.colorScheme.onSecondaryContainer,
-                  ),
+                Icon(
+                  icon,
+                  size: 15,
+                  color: theme.colorScheme.onSecondaryContainer,
+                ),
                 const SizedBox(width: 5),
                 Text(
                   place.approximate ? '${place.name} ~' : place.name,
@@ -840,8 +912,9 @@ class _SwipeActionCardState extends State<_SwipeActionCard> {
           if (_offset != 0)
             Positioned.fill(
               child: Align(
-                alignment:
-                    alignLeft ? Alignment.centerLeft : Alignment.centerRight,
+                alignment: alignLeft
+                    ? Alignment.centerLeft
+                    : Alignment.centerRight,
                 child: actions,
               ),
             ),
@@ -853,7 +926,10 @@ class _SwipeActionCardState extends State<_SwipeActionCard> {
             transform: Matrix4.translationValues(_offset, 0, 0),
             child: GestureDetector(
               onTap: _offset != 0 ? _close : null,
-              child: AbsorbPointer(absorbing: _offset != 0, child: widget.child),
+              child: AbsorbPointer(
+                absorbing: _offset != 0,
+                child: widget.child,
+              ),
             ),
           ),
         ],

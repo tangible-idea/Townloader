@@ -213,6 +213,8 @@ const LINE_ROLES = {
     'Names one specific real-world place a reader could visit (a park, palace, street, lake, forest, shop, restaurant, mountain, island), possibly followed by its address or region, e.g. "덕수궁 | 서울 중구 정동" or "충북 보은 말티재".',
   title:
     'A heading for the whole slide or post, such as a theme or list title, not one specific place (e.g. "서울 가을 산책 명소", "넷플에서도 선택한 미친 단풍숲").',
+  address:
+    'Only the street address or location of a place, often after "@" or a pin mark, with no place name of its own, e.g. "@수원시 팔달구 화서동 436-1", "경기 광주시 도척면 도척윗로 278-1", "📍서울 종로구 사직로 161".',
   description: "A sentence describing or recommending something, not itself a place name.",
   other:
     "Anything else: logos, watermarks, ad labels, stray letters or numbers, calls to action.",
@@ -233,20 +235,44 @@ async function placesFromImages(
         // 사진 한 장을 못 읽어도 나머지 사진의 장소는 살린다.
         const roles = await classifyLines(env, image.lines).catch((error) => {
           failures.push(`image ${image.index}: ${error}`);
-          return [] as number[];
+          return [] as Record<string, number>[];
         });
-        return image.lines.flatMap((line, i) =>
-          (roles[i] ?? 0) >= PLACE_THRESHOLD
-            ? splitPlaceLine(line.text).map((c) => ({ ...c, imageIndex: image.index }))
-            : [],
-        );
+        // 주소만 적힌 줄은 장소로 세지 않고, 바로 위 장소 줄의 주소로 붙인다.
+        const placeLines: { top: number; candidates: Candidate[] }[] = [];
+        const addressLines: { top: number; text: string }[] = [];
+        image.lines.forEach((line, i) => {
+          const role = roles[i] ?? {};
+          if ((role.place ?? 0) >= PLACE_THRESHOLD) {
+            placeLines.push({
+              top: line.top,
+              candidates: splitPlaceLine(line.text).map((c) => ({
+                ...c,
+                imageIndex: image.index,
+              })),
+            });
+          } else if ((role.address ?? 0) >= PLACE_THRESHOLD) {
+            addressLines.push({ top: line.top, text: cleanAddress(line.text) });
+          }
+        });
+        for (const address of addressLines) {
+          const owner = placeLines
+            .filter((place) => place.top <= address.top)
+            .sort((a, b) => b.top - a.top)[0];
+          for (const candidate of owner?.candidates ?? []) {
+            candidate.address ??= address.text;
+          }
+        }
+        return placeLines.flatMap((place) => place.candidates);
       }),
   );
   return perImage.flat();
 }
 
-/** 줄마다 장소 이름일 확률. 한 사진의 줄을 한 번에 묻는다. */
-async function classifyLines(env: PlacesEnv, lines: OcrLine[]): Promise<number[]> {
+/** 줄마다 역할([LINE_ROLES])별 확률. 한 사진의 줄을 한 번에 묻는다. */
+async function classifyLines(
+  env: PlacesEnv,
+  lines: OcrLine[],
+): Promise<Record<string, number>[]> {
   const questions: Record<string, unknown> = {};
   lines.forEach((line, i) => {
     // 줄 번호로 가리키면 이웃 줄과 헷갈려서, 글자와 위치를 질문에 그대로 넣는다.
@@ -260,19 +286,33 @@ async function classifyLines(env: PlacesEnv, lines: OcrLine[]): Promise<number[]
       criteria: LINE_ROLES,
     };
   });
+  const answers = await jev(env, { lines }, questions);
+  return lines.map((_, i) => answers[`l${i}`]?.probabilities ?? {});
+}
+
+async function jev(
+  env: PlacesEnv,
+  state: unknown,
+  questions: Record<string, unknown>,
+): Promise<Record<string, { choice?: string; probabilities?: Record<string, number> }>> {
   const response = await fetch("https://api.typesafe.ai/v1/systemone", {
     method: "POST",
     headers: {
       authorization: `Bearer ${env.TYPESAFE_API_KEY}`,
       "content-type": "application/json",
     },
-    body: JSON.stringify({ model: "jev-latest", state: { lines }, questions }),
+    body: JSON.stringify({ model: "jev-latest", state, questions }),
   });
   if (!response.ok) throw new Error(`jev ${response.status}`);
   const data = (await response.json()) as {
-    answers: Record<string, { probabilities?: Record<string, number> }>;
+    answers: Record<string, { choice?: string; probabilities?: Record<string, number> }>;
   };
-  return lines.map((_, i) => data.answers[`l${i}`]?.probabilities?.place ?? 0);
+  return data.answers ?? {};
+}
+
+/** "@수원시 팔달구 화서동 436-1" → "수원시 팔달구 화서동 436-1". */
+function cleanAddress(text: string): string {
+  return text.replace(/^[\s@＠#＃📍]+/u, "").trim();
 }
 
 /**
@@ -288,7 +328,8 @@ export function splitPlaceLine(text: string): Omit<Candidate, "imageIndex">[] {
   const address = rest.join(" ").trim() || null;
   return rawName
     .split(/\s+(?:&|＆|및)\s+/)
-    .map((name) => name.trim())
+    // 해시태그·멘션 표시는 이름이 아니다. "#수원 서호공원" → "수원 서호공원".
+    .map((name) => name.replace(/^[\s@＠#＃📍]+/u, "").trim())
     .filter((name) => name.length >= 2)
     .map((name) => ({ name, address }));
 }
@@ -392,47 +433,121 @@ async function geocode(env: PlacesEnv, name: string, address: string | null): Pr
   // 로마자 이름(해외 장소)은 카카오가 엉뚱한 국내 가게를 내놓기 쉬워 Mapbox 를 먼저 본다.
   const latin = /^[\p{Script=Latin}\d\s'&.,-]+$/u.test(name);
   if (latin) return (await mapbox(env, name, address)) ?? (await kakaoPlace(env, name, address));
+  // 카카오에서 그 장소를 못 찾으면 글에 적힌 주소로만 대신한다. 이름으로 Mapbox 를 다시
+  // 뒤지면 도시 단위의 엉뚱한 좌표가 나오기 쉬워서, 주소도 없으면 그 장소는 뺀다.
   return (
     (await kakaoPlace(env, name, address)) ??
-    (address ? await kakaoAddress(env, address) : null) ??
-    (await mapbox(env, name, address))
+    (address ? await kakaoAddress(env, address) : null)
   );
 }
 
 async function kakaoPlace(env: PlacesEnv, name: string, address: string | null): Promise<GeoHit | null> {
-  const area = areaTokens(address);
+  // 이름을 줄여 가며 검색한 결과를 모아 두고, 그중 글이 말하는 장소를 Jev 가 고른다.
+  // 줄인 검색어는 "성남"처럼 지역 이름만 남기도 해서, 이름이 겹친다고 받지 않는다.
+  const found: { doc: KakaoDoc; query: string }[] = [];
+  const seen = new Set<string>();
   for (const query of queryVariants(name)) {
-    const docs = await kakao(env, "keyword", query);
-    const doc = docs.find(
-      (d) => similar(query, d.place_name ?? "") && matchesArea(d.address_name, area),
-    );
-    if (doc) {
-      const detail = await kakaoMapDetail(query, doc.id, area);
-      const cate =
-        detail?.category ??
-        leafCategory(doc.category_name, doc.category_group_name);
-      const phone = doc.phone?.trim() || detail?.phone || null;
-      const placeUrl = doc.place_url
-        ? doc.place_url.replace(/^http:\/\//, "https://")
-        : doc.id
-          ? `https://place.map.kakao.com/${doc.id}`
-          : detail?.placeUrl ?? null;
-      return {
-        lat: Number(doc.y),
-        lng: Number(doc.x),
-        address: doc.road_address_name?.trim() || doc.address_name,
-        approximate: false,
-        category: cate,
-        phone,
-        photoUrl: detail?.photoUrl ?? null,
-        placeUrl,
-        rating: detail?.rating ?? null,
-        reviewCount: detail?.reviewCount ?? null,
-        summary: detail?.summary ?? null,
-      };
+    for (const doc of await kakao(env, "keyword", query)) {
+      const key = doc.id ?? `${doc.place_name}|${doc.address_name}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      found.push({ doc, query });
     }
+    if (found.length >= MAX_MATCH_OPTIONS) break;
   }
-  return null;
+  if (found.length === 0) return null;
+  const options = found.slice(0, MAX_MATCH_OPTIONS);
+
+  const area = areaTokens(address);
+  const index = await pickKakaoDoc(env, name, address, options.map((o) => o.doc)).catch(() =>
+    // Jev 가 안 되면 전체 이름으로 찾은 결과 중 이름·동네가 맞는 것만 받는다.
+    options.findIndex(
+      (o) =>
+        o.query === options[0].query &&
+        similar(o.query, o.doc.place_name ?? "") &&
+        matchesArea(o.doc.address_name, area),
+    ),
+  );
+  if (index < 0) return null;
+  const { doc, query } = options[index];
+
+  const detail = await kakaoMapDetail(query, doc.id, area);
+  const cate = detail?.category ?? leafCategory(doc.category_name, doc.category_group_name);
+  const phone = doc.phone?.trim() || detail?.phone || null;
+  const placeUrl = doc.place_url
+    ? doc.place_url.replace(/^http:\/\//, "https://")
+    : doc.id
+      ? `https://place.map.kakao.com/${doc.id}`
+      : detail?.placeUrl ?? null;
+  return {
+    lat: Number(doc.y),
+    lng: Number(doc.x),
+    address: doc.road_address_name?.trim() || doc.address_name,
+    approximate: false,
+    category: cate,
+    phone,
+    photoUrl: detail?.photoUrl ?? null,
+    placeUrl,
+    rating: detail?.rating ?? null,
+    reviewCount: detail?.reviewCount ?? null,
+    summary: detail?.summary ?? null,
+  };
+}
+
+/** Jev 에게 보여 줄 검색 결과 수. */
+const MAX_MATCH_OPTIONS = 10;
+
+/** 검색 결과를 그 장소로 받을 최소 확률. 애매하면 엉뚱한 곳에 찍느니 뺀다. */
+const MATCH_THRESHOLD = 0.5;
+
+/**
+ * 카카오 검색 결과 가운데 글이 말하는 장소와 같은 곳의 위치. 없으면 -1.
+ */
+async function pickKakaoDoc(
+  env: PlacesEnv,
+  name: string,
+  address: string | null,
+  docs: KakaoDoc[],
+): Promise<number> {
+  const criteria: Record<string, string> = {};
+  docs.forEach((doc, i) => {
+    criteria[`r${i}`] = [
+      doc.place_name ?? "",
+      leafCategory(doc.category_name, doc.category_group_name) ?? "",
+      doc.road_address_name?.trim() || doc.address_name,
+    ]
+      .filter(Boolean)
+      .join(" | ");
+  });
+  criteria.none =
+    'None of the results is that place. Choose this when a result only shares a word with the post\'s name, ' +
+    'such as the city or district (the post names "성남 율동공원" but the result is "성남중앙교회"), ' +
+    "or is some other facility in the same area (a city hall, police station, school, welfare center, " +
+    "funeral hall, office or shop) rather than the place itself.";
+  const answers = await jev(
+    env,
+    { post: { place_name: name, address_or_region: address } },
+    {
+      match: {
+        type: "choice",
+        instructions:
+          "A social media post recommends visiting the place `post.place_name` " +
+          "(`post.address_or_region` is the address or region the post gives, if any). " +
+          "Which Kakao Map search result is that same real-world place? Words like a city or " +
+          'district name at the start of the post\'s name ("수원", "성남") only say where the place is. ' +
+          "A mountain, trail, lake or other large natural place can spread over neighbouring cities, " +
+          "so its listed address may name the next city over. For a trail made of sections, " +
+          "the start point or any section of that same trail is that place. " +
+          "Each option is: result name | category | address.",
+        criteria,
+      },
+    },
+  );
+  const match = answers.match;
+  const choice = match?.choice;
+  if (!choice || choice === "none") return -1;
+  if ((match.probabilities?.[choice] ?? 0) < MATCH_THRESHOLD) return -1;
+  return Number(choice.slice(1));
 }
 
 function leafCategory(full?: string, group?: string): string | null {
@@ -630,13 +745,14 @@ function normalize(text: string): string {
   return text.toLowerCase().replace(/[\s\p{P}\p{S}]/gu, "");
 }
 
-/** 같은 이름이거나 100m 안에 있으면 하나로 친다. 먼저 찾은(태그 > 사진 > 본문) 쪽을 남긴다. */
+/** 같은 이름이거나 같은 카카오 장소이거나 100m 안에 있으면 하나로 친다. 먼저 찾은(태그 > 사진 > 본문) 쪽을 남긴다. */
 function dedupe(places: Place[]): Place[] {
   const kept: Place[] = [];
   for (const place of places) {
     const duplicate = kept.some(
       (other) =>
         normalize(other.name) === normalize(place.name) ||
+        (other.placeUrl != null && other.placeUrl === place.placeUrl) ||
         distanceMeters(other, place) < 100,
     );
     if (!duplicate) kept.push(place);

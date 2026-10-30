@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 
 import '../config/app_config.dart';
 import '../models/threads_thread.dart';
+import '../services/usage_meter.dart';
 
 /// 요약을 만드는 AI 공급자. 키는 프록시에만 있다.
 enum SummaryProvider {
@@ -38,7 +39,7 @@ class SummaryClient {
   SummaryClient({String? baseUrl, String? appToken, http.Client? httpClient})
     : _baseUrl = baseUrl ?? AppConfig.proxyUrl,
       _appToken = appToken ?? AppConfig.proxyAppToken,
-      _http = httpClient ?? http.Client();
+      _http = httpClient ?? UsageClient();
 
   final String _baseUrl;
   final String _appToken;

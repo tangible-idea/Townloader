@@ -7,6 +7,9 @@ import {
   type GeoCandidate,
   type PlacesEnv,
 } from "./places";
+import { addUsage, installUsageMeter, withUsage } from "./usage";
+
+installUsageMeter();
 
 /**
  * Townloader 요약 프록시.
@@ -78,72 +81,77 @@ const MAX_TEXT = 2000;
 const CACHE_TTL_SECONDS = 60 * 60 * 24 * 7;
 
 export default {
-  async fetch(
-    request: Request,
-    env: Env,
-    ctx: ExecutionContext,
-  ): Promise<Response> {
-    const url = new URL(request.url);
-    const isSummary = request.method === "POST" && url.pathname === "/summarize";
-    const isHiker = request.method === "GET" && url.pathname.startsWith("/hiker/");
-    const isPlaces = request.method === "POST" && url.pathname === "/places";
-    const isGeocode = request.method === "POST" && url.pathname === "/internal/geocode";
-    const isTts = request.method === "POST" && url.pathname === "/tts";
-    const isTitle = request.method === "POST" && url.pathname === "/title";
-    if (!isSummary && !isHiker && !isPlaces && !isTts && !isTitle && !isGeocode) {
-      return json({ error: "not_found" }, 404);
-    }
-    if (request.headers.get("x-app-token") !== env.APP_TOKEN) {
-      return json({ error: "unauthorized" }, 401);
-    }
-    if (isHiker) return proxyHiker(url, request, env, ctx);
-    if (isPlaces) return handlePlaces(request, env);
-    if (isGeocode) {
-      const candidates = (await request.json()) as GeoCandidate[];
-      return json(await geocodeCandidates(env, candidates.slice(0, 8)));
-    }
-    if (isTts) return handleTts(request, env);
-    if (isTitle) return handleTitle(request, env);
-
-    let body: SummarizeRequest;
-    try {
-      body = parseRequest(await request.json());
-    } catch (error) {
-      return json({ error: "bad_request", detail: String(error) }, 400);
-    }
-
-    // 같은 글은 공급자·언어별로 한 번만 요약한다.
-    // 예전 스레드 요약 캐시를 그대로 쓰도록 스레드 요약 키는 바꾸지 않는다.
-    const kindKey = body.kind === "comments" ? ":comments" : "";
-    const cacheKey = `summary:${body.provider}:${body.lang}:${body.id}${kindKey}`;
-    const cached = await env.SUMMARIES.get(cacheKey, "json");
-    if (cached) return json({ ...(cached as object), cached: true });
-
-    const ip = request.headers.get("cf-connecting-ip") ?? "unknown";
-    if (!(await takeQuota(env, ip))) {
-      return json({ error: "rate_limited" }, 429);
-    }
-
-    try {
-      const result =
-        body.provider === "claude"
-          ? await summarizeWithClaude(env, body)
-          : await summarizeWithPoe(env, body);
-      await env.SUMMARIES.put(cacheKey, JSON.stringify(result), {
-        expirationTtl: CACHE_TTL_SECONDS,
-      });
-      return json({ ...result, cached: false });
-    } catch (error) {
-      if (error instanceof Anthropic.RateLimitError) {
-        return json({ error: "upstream_busy" }, 503);
-      }
-      if (error instanceof Anthropic.APIError) {
-        return json({ error: "upstream_error", status: error.status }, 502);
-      }
-      return json({ error: "upstream_error", detail: String(error) }, 502);
-    }
+  /** 바깥 서비스를 부른 횟수를 `x-usage` 헤더로 붙여 돌려준다. usage.ts 참고. */
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    const { result, usage } = await withUsage(() => handle(request, env, ctx));
+    if (Object.keys(usage).length === 0) return result;
+    const response = new Response(result.body, result);
+    response.headers.set("x-usage", JSON.stringify(usage));
+    return response;
   },
 } satisfies ExportedHandler<Env>;
+
+async function handle(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  const url = new URL(request.url);
+  const isSummary = request.method === "POST" && url.pathname === "/summarize";
+  const isHiker = request.method === "GET" && url.pathname.startsWith("/hiker/");
+  const isPlaces = request.method === "POST" && url.pathname === "/places";
+  const isGeocode = request.method === "POST" && url.pathname === "/internal/geocode";
+  const isTts = request.method === "POST" && url.pathname === "/tts";
+  const isTitle = request.method === "POST" && url.pathname === "/title";
+  if (!isSummary && !isHiker && !isPlaces && !isTts && !isTitle && !isGeocode) {
+    return json({ error: "not_found" }, 404);
+  }
+  if (request.headers.get("x-app-token") !== env.APP_TOKEN) {
+    return json({ error: "unauthorized" }, 401);
+  }
+  if (isHiker) return proxyHiker(url, request, env, ctx);
+  if (isPlaces) return handlePlaces(request, env);
+  if (isGeocode) {
+    const candidates = (await request.json()) as GeoCandidate[];
+    return json(await geocodeCandidates(env, candidates.slice(0, 8)));
+  }
+  if (isTts) return handleTts(request, env);
+  if (isTitle) return handleTitle(request, env);
+
+  let body: SummarizeRequest;
+  try {
+    body = parseRequest(await request.json());
+  } catch (error) {
+    return json({ error: "bad_request", detail: String(error) }, 400);
+  }
+
+  // 같은 글은 공급자·언어별로 한 번만 요약한다.
+  // 예전 스레드 요약 캐시를 그대로 쓰도록 스레드 요약 키는 바꾸지 않는다.
+  const kindKey = body.kind === "comments" ? ":comments" : "";
+  const cacheKey = `summary:${body.provider}:${body.lang}:${body.id}${kindKey}`;
+  const cached = await env.SUMMARIES.get(cacheKey, "json");
+  if (cached) return json({ ...(cached as object), cached: true });
+
+  const ip = request.headers.get("cf-connecting-ip") ?? "unknown";
+  if (!(await takeQuota(env, ip))) {
+    return json({ error: "rate_limited" }, 429);
+  }
+
+  try {
+    const result =
+      body.provider === "claude"
+        ? await summarizeWithClaude(env, body)
+        : await summarizeWithPoe(env, body);
+    await env.SUMMARIES.put(cacheKey, JSON.stringify(result), {
+      expirationTtl: CACHE_TTL_SECONDS,
+    });
+    return json({ ...result, cached: false });
+  } catch (error) {
+    if (error instanceof Anthropic.RateLimitError) {
+      return json({ error: "upstream_busy" }, 503);
+    }
+    if (error instanceof Anthropic.APIError) {
+      return json({ error: "upstream_error", status: error.status }, 502);
+    }
+    return json({ error: "upstream_error", detail: String(error) }, 502);
+  }
+}
 
 // ── 요약 ────────────────────────────────────────────────────────────────────
 
@@ -250,7 +258,7 @@ async function summarizeWithPoe(
 
 /** 장소 결과는 글이 바뀌지 않는 한 그대로라 오래 둔다. 로직을 바꾸면 버전을 올린다. */
 const PLACES_CACHE_TTL_SECONDS = 60 * 60 * 24 * 30;
-const PLACES_CACHE_VERSION = "v3";
+const PLACES_CACHE_VERSION = "v4";
 
 async function handlePlaces(request: Request, env: Env): Promise<Response> {
   let body;
@@ -277,6 +285,7 @@ async function handlePlaces(request: Request, env: Env): Promise<Response> {
         body: JSON.stringify(candidates),
       });
       if (!response.ok) throw new Error(`geocode ${response.status}`);
+      addUsage(response.headers.get("x-usage"));
       return (await response.json()) as Awaited<ReturnType<typeof geocodeCandidates>>;
     });
     if (failures.length > 0) {

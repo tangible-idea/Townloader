@@ -1,9 +1,12 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -11,6 +14,7 @@ import '../config/app_config.dart';
 import '../data/places_client.dart';
 import '../l10n/strings.dart';
 import '../models/saved_link.dart';
+import '../services/usage_meter.dart';
 import '../state/links_controller.dart';
 import 'map/place_card_image.dart';
 import 'widgets/network_thumb.dart';
@@ -93,8 +97,7 @@ class _Pin {
 
 class _PlacesMapScreenState extends State<PlacesMapScreen> {
   late final List<_Pin> _pins = [
-    for (final link
-        in widget.links ?? context.read<LinksController>().allLinks)
+    for (final link in widget.links ?? context.read<LinksController>().allLinks)
       if (widget.category == null || link.category == widget.category)
         for (final place in link.places) _Pin(place, link),
   ];
@@ -128,11 +131,33 @@ class _PlacesMapScreenState extends State<PlacesMapScreen> {
   PageController? _pageController;
   PageController get _pages => _pageController ??= PageController(
     viewportFraction: 0.86,
-    initialPage: _initialIndex,
+    initialPage: math.max(0, _groupOf(_initialIndex, _groups)),
   );
 
-  /// 밝은 하늘을 입힌 지도 스타일. 지도가 만들어지는 동안 미리 받아 둔다.
-  late final Future<String?> _style = _lightSkyStyle();
+  /// 하단 카드 묶음. 글 하나의 장소들이 한 묶음(겹친 카드)이고, 좌우로 글을 넘긴다.
+  /// [_pins] 는 글마다 이어져 있으므로 순서대로 끊어 묶는다. 값은 [_pins] 의 위치.
+  List<List<int>> get _groups {
+    final groups = <List<int>>[];
+    String? code;
+    for (final (index, pin) in _pins.indexed) {
+      if (pin.link.code != code) {
+        groups.add([]);
+        code = pin.link.code;
+      }
+      groups.last.add(index);
+    }
+    return groups;
+  }
+
+  static int _groupOf(int pinIndex, List<List<int>> groups) =>
+      groups.indexWhere((group) => group.contains(pinIndex));
+
+  /// 글마다 마지막으로 보던 장소. 좌우로 넘겼다 돌아오면 그 장소부터 보인다.
+  final Map<String, _Pin> _lastOfLink = {};
+
+  /// 밝은 하늘을 입힌 지도 스타일. 화면을 열자마자 받기 시작해 지도가 만들어지는
+  /// 동안 준비한다. 점과 카드는 이 스타일이 읽힌 뒤에 올라가므로 늦으면 핀도 늦다.
+  final Future<String?> _style = _lightSkyStyle();
   bool _customStyle = false;
   bool _pinsAdded = false;
 
@@ -176,7 +201,6 @@ class _PlacesMapScreenState extends State<PlacesMapScreen> {
   @override
   void dispose() {
     _tapSubscription?.cancel();
-    _cards.close();
     _placesClient.close();
     _pageController?.dispose();
     super.dispose();
@@ -185,7 +209,30 @@ class _PlacesMapScreenState extends State<PlacesMapScreen> {
   /// Outdoors 스타일은 멀리서 볼 때 지구본 밖 우주가 검은색이고 별이 뜬다.
   /// Flutter SDK 에는 하늘(fog)을 바꾸는 API 가 없어서, 스타일 JSON 을 받아 하늘만
   /// 밝은 하늘색으로 바꿔 쓴다. 받지 못하면 원래 스타일 그대로 둔다.
-  static Future<String?> _lightSkyStyle() async {
+  ///
+  /// 받은 스타일은 파일로 남겨 다음에 지도를 열 때 바로 쓰고, 오래됐으면 뒤에서 새로 받는다.
+  static Future<String?> _lightSkyStyle() => _styleMemo ??= _loadStyle();
+  static Future<String?>? _styleMemo;
+  static const _styleMaxAge = Duration(days: 7);
+
+  static Future<String?> _loadStyle() async {
+    File? file;
+    try {
+      final dir = await getApplicationCacheDirectory();
+      file = File('${dir.path}/map_style_$_styleName.json');
+      if (await file.exists()) {
+        final age = DateTime.now().difference(await file.lastModified());
+        if (age > _styleMaxAge) unawaited(_downloadStyle(file));
+        return await file.readAsString();
+      }
+    } catch (_) {}
+    final style = await _downloadStyle(file);
+    // 받지 못했으면 다음에 지도를 열 때 다시 받아 본다.
+    if (style == null) _styleMemo = null;
+    return style;
+  }
+
+  static Future<String?> _downloadStyle(File? file) async {
     try {
       final response = await http
           .get(
@@ -195,13 +242,18 @@ class _PlacesMapScreenState extends State<PlacesMapScreen> {
             ),
           )
           .timeout(const Duration(seconds: 8));
+      UsageMeter.instance.add('mapbox');
       if (response.statusCode != 200) return null;
       final style =
           jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
       style['fog'] = _lightSky;
       style['name'] = _styleName;
-      return jsonEncode(style);
-    } on Exception {
+      final json = jsonEncode(style);
+      try {
+        await file?.writeAsString(json, flush: true);
+      } catch (_) {}
+      return json;
+    } catch (_) {
       return null;
     }
   }
@@ -234,6 +286,7 @@ class _PlacesMapScreenState extends State<PlacesMapScreen> {
 
   Future<void> _onMapCreated(MapboxMap map) async {
     _map = map;
+    UsageMeter.instance.add('mapbox_map');
     // 처음에는 멀리서 지구본을 보여 주고, 장소들 쪽으로 날아간다.
     final first = _pins.isEmpty ? null : _pins[_current].point;
     await map.setCamera(
@@ -242,7 +295,12 @@ class _PlacesMapScreenState extends State<PlacesMapScreen> {
         zoom: 1.2,
       ),
     );
-    final style = await _style;
+    // 처음 열 때 스타일 받기가 늦으면 기다리지 않고 기본 스타일에 핀을 올린다.
+    // 받기는 뒤에서 계속되어 다음에 지도를 열 때부터 밝은 하늘이 바로 보인다.
+    final style = await _style.timeout(
+      const Duration(seconds: 2),
+      onTimeout: () => null,
+    );
     if (!mounted) return;
     if (style != null) {
       _customStyle = true;
@@ -282,7 +340,7 @@ class _PlacesMapScreenState extends State<PlacesMapScreen> {
         if (index == _current) {
           _showDetail(pin!);
         } else {
-          _select(index, fromMap: true);
+          _select(index);
         }
       },
     );
@@ -339,7 +397,8 @@ class _PlacesMapScreenState extends State<PlacesMapScreen> {
     );
   }
 
-  /// 카드는 그림을 만드는 데 시간이 걸려서, 만들어지는 대로 하나씩 올린다.
+  /// 카드는 사진을 받아 그림을 만드는 데 시간이 걸려서, 여러 장을 동시에 만들고
+  /// 만들어지는 대로 올린다. 사진 하나가 늦어도 나머지 카드는 기다리지 않는다.
   /// 눌러서 들어온 글의 장소를 먼저 그리고, 겹칠 때도 이기도록 정렬 키를 앞세운다.
   Future<void> _addCards() async {
     final pixelRatio = MediaQuery.devicePixelRatioOf(context);
@@ -347,18 +406,27 @@ class _PlacesMapScreenState extends State<PlacesMapScreen> {
     final order = [
       if (widget.initialPlace != null && _pins.isNotEmpty) _current,
       for (final (index, pin) in _pins.indexed)
-        if (index != _current && focusCode != null && pin.link.code == focusCode)
+        if (index != _current &&
+            focusCode != null &&
+            pin.link.code == focusCode)
           index,
       for (final (index, pin) in _pins.indexed)
-        if ( !(widget.initialPlace != null && index == _current) &&
+        if (!(widget.initialPlace != null && index == _current) &&
             !(focusCode != null && pin.link.code == focusCode))
           index,
     ];
-    final pins = [for (final index in order) _pins[index]];
-    for (final (rank, pin) in pins.indexed) {
-      await _addCard(pin, rank.toDouble(), pixelRatio);
-      if (!mounted) return;
+    final queue = [
+      for (final (rank, index) in order.indexed) (rank, _pins[index]),
+    ];
+    var next = 0;
+    Future<void> worker() async {
+      while (mounted && next < queue.length) {
+        final (rank, pin) = queue[next++];
+        await _addCard(pin, rank.toDouble(), pixelRatio);
+      }
     }
+
+    await Future.wait([for (var i = 0; i < 6; i++) worker()]);
   }
 
   /// 지도 위 풍선 카드에 적을 한 줄. 카카오맵 업종·별점이 있으면 먼저 보여 준다.
@@ -445,6 +513,7 @@ class _PlacesMapScreenState extends State<PlacesMapScreen> {
         _current = math.max(0, _current - 1);
       }
     });
+    _syncPage();
     _removeFromMap(pin);
     final at = await links.removePlace(pin.link.code, pin.place);
 
@@ -471,13 +540,14 @@ class _PlacesMapScreenState extends State<PlacesMapScreen> {
     int index,
     int placeIndex,
   ) async {
-    await links.insertPlace(
-      pin.link.code,
-      pin.place,
-      placeIndex,
-    );
+    await links.insertPlace(pin.link.code, pin.place, placeIndex);
     if (!mounted) return;
-    setState(() => _pins.insert(index.clamp(0, _pins.length), pin));
+    final at = index.clamp(0, _pins.length);
+    setState(() {
+      _pins.insert(at, pin);
+      if (at <= _current && _pins.length > 1) _current++;
+    });
+    _syncPage();
     final dot = await _dotLayer?.create(_dotOptions(pin));
     if (dot != null) _dotOf[pin] = dot;
     if (!mounted) return;
@@ -494,16 +564,83 @@ class _PlacesMapScreenState extends State<PlacesMapScreen> {
     if (dot != null) _dotLayer?.delete(dot);
   }
 
-  void _select(int index, {bool fromMap = false}) {
+  void _select(int index) {
     setState(() => _current = index);
-    if (fromMap && _pages.hasClients) {
+    final pin = _pins[index];
+    _lastOfLink[pin.link.code] = pin;
+    final group = _groupOf(index, _groups);
+    if (_pages.hasClients && _pages.page?.round() != group) {
       _pages.animateToPage(
-        index,
+        group,
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeOut,
       );
     }
     _focus(index);
+  }
+
+  /// 좌우로 다른 글로 넘어왔을 때. 그 글에서 마지막으로 보던 장소를 고른다.
+  void _selectGroup(List<int> group) {
+    if (group.contains(_current)) return;
+    final last = _lastOfLink[_pins[group.first].link.code];
+    final index = last == null ? -1 : _pins.indexOf(last);
+    _select(group.contains(index) ? index : group.first);
+  }
+
+  /// 장소를 지우거나 되돌려 묶음 위치가 바뀌면 지금 장소의 묶음으로 바로 옮긴다.
+  void _syncPage() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_pages.hasClients || _pins.isEmpty) return;
+      final group = _groupOf(_current, _groups);
+      if (group >= 0 && _pages.page?.round() != group) _pages.jumpToPage(group);
+    });
+  }
+
+  /// 하단 카드. 좌우로 글을 넘기고, 글 하나의 장소들은 겹친 카드로 위아래로 넘긴다.
+  Widget _deckCarousel() {
+    final groups = _groups;
+    final deepest = groups.fold(
+      0,
+      (depth, group) =>
+          math.max(depth, math.min(group.length - 1, _PlaceDeck.maxDepth)),
+    );
+    return SizedBox(
+      height: _PlaceDeck.tileHeight + _PlaceDeck.peek * deepest,
+      child: PageView.builder(
+        controller: _pages,
+        itemCount: groups.length,
+        onPageChanged: (page) {
+          if (page < groups.length) _selectGroup(groups[page]);
+        },
+        itemBuilder: (context, page) {
+          final group = groups[page];
+          final pins = [for (final index in group) _pins[index]];
+          final position = group.indexOf(_current);
+          return Align(
+            alignment: Alignment.bottomCenter,
+            child: _PlaceDeck(
+              pins: pins,
+              front: position < 0
+                  ? math.max(
+                      0,
+                      pins.indexOf(
+                        _lastOfLink[pins.first.link.code] ?? pins.first,
+                      ),
+                    )
+                  : position,
+              active: position >= 0,
+              color: Color(_colorOf(pins.first.link)),
+              onSelect: (at) => _select(group[at]),
+              onTap: (at) {
+                _select(group[at]);
+                _showDetail(pins[at]);
+              },
+              onLongPress: _editable ? (at) => _confirmDelete(pins[at]) : null,
+            ),
+          );
+        },
+      ),
+    );
   }
 
   void _showDetail(_Pin pin) {
@@ -588,7 +725,9 @@ class _PlacesMapScreenState extends State<PlacesMapScreen> {
 
     if (!AppConfig.hasMapbox) {
       return Scaffold(
-        appBar: AppBar(title: Text(widget.title ?? widget.category ?? s.mapAll)),
+        appBar: AppBar(
+          title: Text(widget.title ?? widget.category ?? s.mapAll),
+        ),
         body: MessageView(icon: Icons.public_off, title: s.mapUnavailable),
       );
     }
@@ -684,45 +823,125 @@ class _PlacesMapScreenState extends State<PlacesMapScreen> {
               left: 0,
               right: 0,
               bottom: 0,
-              child: SafeArea(
-                top: false,
-                child: SizedBox(
-                  height: 122,
-                  child: PageView.builder(
-                    controller: _pages,
-                    itemCount: _pins.length,
-                    onPageChanged: (index) {
-                      if (index != _current) _select(index);
-                    },
-                    itemBuilder: (context, index) {
-                      final pin = _pins[index];
-                      final tile = _PlaceTile(
-                        pin: pin,
-                        color: Color(_colorOf(pin.link)),
-                        selected: index == _current,
-                        onTap: () {
-                          _select(index);
-                          _showDetail(pin);
-                        },
-                        onLongPress: _editable
-                            ? () => _confirmDelete(pin)
-                            : null,
-                      );
-                      if (!_editable) return tile;
-                      // 위로 밀면 바로 지운다. 옆으로 넘기는 것과 겹치지 않는다.
-                      return Dismissible(
-                        key: ObjectKey(pin),
-                        direction: DismissDirection.up,
-                        onDismissed: (_) => _delete(pin),
-                        child: tile,
-                      );
-                    },
-                  ),
-                ),
-              ),
+              child: SafeArea(top: false, child: _deckCarousel()),
             ),
         ],
       ),
+    );
+  }
+}
+
+/// 글 하나의 장소 카드들을 겹쳐 보여 준다. 맨 앞 카드가 고른 장소이고, 나머지는 뒤에
+/// 조금씩 위로 비껴 쌓인다. 위로 밀면 다음 장소, 아래로 밀면 이전 장소가 앞으로 나온다.
+class _PlaceDeck extends StatelessWidget {
+  const _PlaceDeck({
+    required this.pins,
+    required this.front,
+    required this.active,
+    required this.color,
+    required this.onSelect,
+    required this.onTap,
+    this.onLongPress,
+  });
+
+  /// 카드 한 장(아래 여백 포함)의 높이.
+  static const tileHeight = 122.0;
+
+  /// 뒤 카드가 앞 카드 위로 비져 나오는 높이.
+  static const peek = 9.0;
+
+  /// 이보다 뒤에 있는 카드는 감춘다. 장소가 아주 많아도 묶음이 너무 높아지지 않는다.
+  static const maxDepth = 6;
+
+  final List<_Pin> pins;
+  final int front;
+
+  /// 지금 고른 장소가 이 묶음에 있는지. 맨 앞 카드를 강조한다.
+  final bool active;
+  final Color color;
+  final ValueChanged<int> onSelect;
+  final ValueChanged<int> onTap;
+  final ValueChanged<int>? onLongPress;
+
+  @override
+  Widget build(BuildContext context) {
+    final count = pins.length;
+    int depthOf(int index) => (index - front + count) % count;
+    // 깊은 카드부터 그려 앞 카드가 위에 오게 한다.
+    final order = [for (var i = 0; i < count; i++) i]
+      ..sort((a, b) => depthOf(b).compareTo(depthOf(a)));
+
+    return GestureDetector(
+      onVerticalDragEnd: count < 2
+          ? null
+          : (details) {
+              final velocity = details.primaryVelocity ?? 0;
+              if (velocity.abs() < 100) return;
+              onSelect((front + (velocity < 0 ? 1 : -1) + count) % count);
+            },
+      child: SizedBox(
+        height: tileHeight + peek * math.min(count - 1, maxDepth),
+        child: Stack(
+          alignment: Alignment.bottomCenter,
+          children: [
+            for (final index in order)
+              _DeckCard(
+                key: ObjectKey(pins[index]),
+                depth: depthOf(index),
+                child: IgnorePointer(
+                  ignoring: depthOf(index) != 0,
+                  child: _PlaceTile(
+                    pin: pins[index],
+                    color: color,
+                    selected: active && depthOf(index) == 0,
+                    onTap: () => onTap(index),
+                    onLongPress: onLongPress == null
+                        ? null
+                        : () => onLongPress!(index),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 묶음 안 카드 한 장. 깊이가 바뀌면 위치·크기·투명도를 부드럽게 옮긴다.
+class _DeckCard extends StatelessWidget {
+  const _DeckCard({super.key, required this.depth, required this.child});
+
+  final int depth;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(end: math.min(depth, _PlaceDeck.maxDepth + 1).toDouble()),
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeOutCubic,
+      builder: (context, value, child) {
+        final hidden = (value - _PlaceDeck.maxDepth).clamp(0.0, 1.0);
+        return Positioned(
+          left: 0,
+          right: 0,
+          bottom: 0,
+          height: _PlaceDeck.tileHeight,
+          child: Opacity(
+            opacity: 1 - hidden,
+            child: Transform.translate(
+              offset: Offset(0, -_PlaceDeck.peek * value),
+              child: Transform.scale(
+                scale: 1 - 0.035 * value,
+                alignment: Alignment.topCenter,
+                child: child,
+              ),
+            ),
+          ),
+        );
+      },
+      child: child,
     );
   }
 }
@@ -761,7 +980,9 @@ class _PlaceTile extends StatelessWidget {
       if (hasReviews)
         hasRating
             ? '(${place.reviewCount})'
-            : (s.isKo ? '후기 ${place.reviewCount}' : '${place.reviewCount} reviews'),
+            : (s.isKo
+                  ? '후기 ${place.reviewCount}'
+                  : '${place.reviewCount} reviews'),
     ].join(' ');
     final addressLine = [
       if (place.summary != null && place.summary!.isNotEmpty)

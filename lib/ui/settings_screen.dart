@@ -6,6 +6,7 @@ import '../services/file_saver.dart';
 import '../services/settings_store.dart';
 import '../state/settings_controller.dart';
 import 'widgets/account_card.dart';
+import 'widgets/usage_card.dart';
 
 /// 다운로드 동작을 설정하는 화면.
 class SettingsScreen extends StatefulWidget {
@@ -107,12 +108,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       MediaFileSaver.isDesktop
                           ? 'Townloader/<account>/'
                           : settings.saveToGallery
-                          ? (s.isKo ? '사진 앱: Townloader 앨범' : 'Photos: Townloader album')
-                          : (s.isKo ? '앱 문서 폴더: Townloader' : 'App documents: Townloader'),
+                          ? (s.isKo
+                                ? '사진 앱: Townloader 앨범'
+                                : 'Photos: Townloader album')
+                          : (s.isKo
+                                ? '앱 문서 폴더: Townloader'
+                                : 'App documents: Townloader'),
                     ),
                   ),
                 ),
 
+                const SizedBox(height: 16),
+                _sectionTitle(context, s.usageSection),
+                const UsageCard(),
                 const SizedBox(height: 16),
                 _sectionTitle(context, s.infoSection),
                 Card(

@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../config/app_config.dart';
+import '../services/usage_meter.dart';
 
 /// Poe API 로 ElevenLabs v3 음성을 만든다.
 ///
@@ -18,7 +19,7 @@ class PoeTtsClient {
     http.Client? httpClient,
     String? proxyUrl,
     String? appToken,
-  }) : _http = httpClient ?? http.Client(),
+  }) : _http = httpClient ?? UsageClient(),
        _proxyUrl = proxyUrl ?? AppConfig.proxyUrl,
        _appToken = appToken ?? AppConfig.proxyAppToken;
 

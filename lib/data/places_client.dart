@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 
 import '../config/app_config.dart';
 import '../models/saved_link.dart';
+import '../services/usage_meter.dart';
 
 class PlacesException implements Exception {
   PlacesException(this.message, {this.rateLimited = false});
@@ -24,7 +25,7 @@ class PlacesClient {
   PlacesClient({String? baseUrl, String? appToken, http.Client? httpClient})
     : _baseUrl = baseUrl ?? AppConfig.proxyUrl,
       _appToken = appToken ?? AppConfig.proxyAppToken,
-      _http = httpClient ?? http.Client();
+      _http = httpClient ?? UsageClient();
 
   final String _baseUrl;
   final String _appToken;
@@ -150,11 +151,12 @@ class PlacesClient {
 
   Future<_KakaoHit?> _searchKakaoMap(String query, List<String> area) async {
     try {
-      final uri = Uri.https(
-        'search.map.kakao.com',
-        '/mapsearch/map.daum',
-        {'callback': 'j', 'msFlag': 'A', 'sort': '0', 'q': query},
-      );
+      final uri = Uri.https('search.map.kakao.com', '/mapsearch/map.daum', {
+        'callback': 'j',
+        'msFlag': 'A',
+        'sort': '0',
+        'q': query,
+      });
       final response = await _http
           .get(
             uri,
@@ -192,9 +194,7 @@ class PlacesClient {
           address: newAddr.isNotEmpty
               ? newAddr
               : (addr.isNotEmpty ? addr : null),
-          category: cate.isNotEmpty
-              ? cate
-              : (cate2.isNotEmpty ? cate2 : null),
+          category: cate.isNotEmpty ? cate : (cate2.isNotEmpty ? cate2 : null),
           phone: tel.isNotEmpty ? tel : null,
           photoUrl: _kakaoThumb(rawImg),
           placeUrl: id.isNotEmpty ? 'https://place.map.kakao.com/$id' : null,
@@ -285,8 +285,10 @@ class PlacesClient {
     return shared / denom >= 0.6;
   }
 
-  static String _normalize(String text) =>
-      text.toLowerCase().replaceAll(RegExp(r'[\s\p{P}\p{S}]', unicode: true), '');
+  static String _normalize(String text) => text.toLowerCase().replaceAll(
+    RegExp(r'[\s\p{P}\p{S}]', unicode: true),
+    '',
+  );
 
   /// 저장한 글의 짧은 대표 제목. 못 지으면 null 이고, 오류도 null 로 넘긴다(제목은 없어도 된다).
   Future<String?> title({
@@ -372,7 +374,8 @@ class KakaoPlaceDetail {
     if (aiMate is Map) {
       final summary = aiMate['summary'];
       final bottom = aiMate['bottom_sheet'];
-      aiTitle = _nonEmpty(summary is Map ? summary['title'] : null) ??
+      aiTitle =
+          _nonEmpty(summary is Map ? summary['title'] : null) ??
           _nonEmpty(bottom is Map ? bottom['title'] : null);
       aiSummary = _nonEmpty(bottom is Map ? bottom['summary'] : null);
       final price = aiMate['price_level'];
@@ -418,7 +421,8 @@ class KakaoPlaceDetail {
             final time = onDays is Map
                 ? _nonEmpty(onDays['start_end_time_desc'])
                 : null;
-            final lastOrder = onDays is Map &&
+            final lastOrder =
+                onDays is Map &&
                     onDays['last_order_times_desc'] is List &&
                     (onDays['last_order_times_desc'] as List).isNotEmpty
                 ? _nonEmpty((onDays['last_order_times_desc'] as List).first)

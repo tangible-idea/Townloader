@@ -32,20 +32,19 @@ class S {
 
   // ── Links ──
   String get linksTitle => isKo ? '링크' : 'Links';
-  String get linksHint =>
-      isKo ? '인스타그램 링크를 붙여넣으세요' : 'Paste Instagram links';
+  String get linksHint => isKo ? '인스타그램 링크를 붙여넣으세요' : 'Paste Instagram links';
   String get linksSave => isKo ? '저장' : 'Save';
   String linksSaved(int count, String category) =>
       isKo ? '$category에 $count개 저장했어요' : 'Saved $count to $category';
   String linksSkipped(int duplicates, int unsupported) => [
-    if (duplicates > 0) isKo ? '이미 저장한 링크 $duplicates개' : '$duplicates already saved',
+    if (duplicates > 0)
+      isKo ? '이미 저장한 링크 $duplicates개' : '$duplicates already saved',
     if (unsupported > 0)
       isKo ? '게시물이 아닌 링크 $unsupported개' : '$unsupported not posts',
   ].join(isKo ? ', ' : ', ');
   String get linksNoneFound =>
       isKo ? '인스타그램 게시물 링크를 찾지 못했어요' : 'No Instagram post links found';
-  String get linksEmptyTitle =>
-      isKo ? '저장한 링크가 없어요' : 'No saved links yet';
+  String get linksEmptyTitle => isKo ? '저장한 링크가 없어요' : 'No saved links yet';
   String get linksEmptyDesc => isKo
       ? '여행지나 맛집 글의 링크를 붙여넣으면 장소를 찾아 모아 둬요'
       : 'Paste links to travel or food posts and their places are collected here';
@@ -61,13 +60,16 @@ class S {
   String get linksCategoryHint => isKo ? '예: 제주 여행' : 'e.g. Tokyo trip';
   String get linksAdd => isKo ? '만들기' : 'Create';
   String get linksApproximate => isKo ? '대략적인 위치' : 'Approximate';
+  String linksShowMorePlaces(int count) =>
+      isKo ? '$count곳 더 보기' : 'Show $count more';
+  String get linksShowLessPlaces => isKo ? '접기' : 'Show less';
   String get downloadHistory => isKo ? '다운로드 목록' : 'Downloads';
   String get mapOpen => isKo ? '지도로 보기' : 'Show on map';
   String get mapShowAll => isKo ? '전체 보기' : 'Show all';
-  String get mapDeletePlace => isKo ? '이 장소 삭제' : 'Delete this place';
+  String get mapDeletePlace => isKo ? '목록에서 제외' : 'Remove from list';
   String get mapDeleteHint => isKo
-      ? '카드를 위로 밀어도 지울 수 있어요.'
-      : 'You can also swipe a card up to remove it.';
+      ? '이 글의 장소 목록과 지도에서 빠져요.'
+      : 'It will be removed from this post and the map.';
   String get mapPlaceDeleted => isKo ? '장소를 지웠어요' : 'Place removed';
   String get undo => isKo ? '되돌리기' : 'Undo';
   String get mapAll => isKo ? '모든 장소' : 'All places';
@@ -119,8 +121,7 @@ class S {
   String get summaryTitle => isKo ? 'AI 요약' : 'AI summary';
   String get summaryShow => isKo ? '요약 보기' : 'Show summary';
   String get commentSummaryTitle => isKo ? '댓글 요약' : 'Reply summary';
-  String get commentSummaryShow =>
-      isKo ? '댓글 요약 보기' : 'Summarize replies';
+  String get commentSummaryShow => isKo ? '댓글 요약 보기' : 'Summarize replies';
   String get commentSummaryPartial => isKo
       ? '불러온 앞부분 댓글만 요약했어요.'
       : 'Only the replies loaded so far are summarized.';
@@ -134,8 +135,7 @@ class S {
   String get summaryNote => isKo
       ? 'AI가 만든 요약이라 틀릴 수 있어요. 원문을 함께 확인하세요.'
       : 'Made by AI and may be wrong. Check the original posts.';
-  String get aiConsentTitle =>
-      isKo ? 'AI로 요약할까요?' : 'Summarize with AI?';
+  String get aiConsentTitle => isKo ? 'AI로 요약할까요?' : 'Summarize with AI?';
   String aiConsentBody(String provider) => isKo
       ? '요약을 만들기 위해 이 스레드의 공개 글과 댓글 내용이 $provider 로 전송됩니다. '
             '계정 정보나 사진은 보내지 않습니다.'
@@ -234,9 +234,8 @@ class S {
   String syncedAt(String time) => isKo ? '$time 동기화됨' : 'Synced $time';
   String get syncNow => isKo ? '지금 동기화' : 'Sync now';
   String get signOut => isKo ? '로그아웃' : 'Sign out';
-  String get signOutDesc => isKo
-      ? '기기에 저장한 링크는 그대로 남아요.'
-      : 'Links saved on this device stay here.';
+  String get signOutDesc =>
+      isKo ? '기기에 저장한 링크는 그대로 남아요.' : 'Links saved on this device stay here.';
   String get deleteAccount => isKo ? '계정 삭제' : 'Delete account';
   String get deleteAccountTitle => isKo ? '계정을 삭제할까요?' : 'Delete your account?';
   String get deleteAccountBody => isKo
@@ -257,12 +256,13 @@ class S {
       : 'Sign in from Settings to share a map.';
   String get shareMapAction => isKo ? '공개하고 공유' : 'Make public and share';
   String get sharePublicLabel => isKo ? '공개 중' : 'Public';
-  String get shareOpenInBrowser =>
-      isKo ? '브라우저로 열기' : 'Open in browser';
+  String get shareOpenInBrowser => isKo ? '브라우저로 열기' : 'Open in browser';
   String get shareLinkAgain => isKo ? '링크 다시 보내기' : 'Send link again';
   String get shareStop => isKo ? '공개 중지' : 'Stop sharing';
-  String get shareStopped => isKo ? '다시 비공개로 바꿨어요' : 'This map is private again';
-  String get sharedMapLoading => isKo ? '공유받은 지도를 불러오는 중…' : 'Loading shared map…';
+  String get shareStopped =>
+      isKo ? '다시 비공개로 바꿨어요' : 'This map is private again';
+  String get sharedMapLoading =>
+      isKo ? '공유받은 지도를 불러오는 중…' : 'Loading shared map…';
 
   // ── Settings ──
   String get settingsTitle => isKo ? '설정' : 'Settings';
@@ -279,6 +279,17 @@ class S {
   String get saveToPhotosSub =>
       isKo ? '끄면 앱 폴더에 저장' : 'Off: save to app folder';
   String get storageSection => isKo ? '저장 위치' : 'Storage';
+  String get usageSection => isKo ? '사용량' : 'Usage';
+  String usageTokens(String tokens) => isKo ? '$tokens 토큰' : '$tokens tokens';
+  String usageSince(String date) =>
+      isKo ? '$date부터 이 기기에서 쓴 양' : 'Used on this device since $date';
+  String get usageFormula => isKo
+      ? '토큰 = 호출 수 × 1회 값. 가장 싼 Jev 1회를 1토큰(약 \$0.0001)으로 두고 다른 서비스는 1회 비용의 배수로 셉니다. 서버 캐시로 처리된 요청은 세지 않습니다.'
+      : 'Tokens = calls × cost per call. One Jev call, the cheapest, is 1 token (about \$0.0001); other services count as multiples of their cost per call. Requests served from the server cache are free.';
+  String usageRow(int calls, int weight) =>
+      isKo ? '$calls회 × $weight' : '$calls calls × $weight';
+  String get usageReset => isKo ? '초기화' : 'Reset';
+  String get usageEmpty => isKo ? '아직 쓴 기록이 없어요.' : 'Nothing used yet.';
   String get infoSection => isKo ? '안내' : 'Info';
   String get infoDesc =>
       isKo ? '공개 계정 미디어만 지원합니다.' : 'Only public accounts are supported.';
