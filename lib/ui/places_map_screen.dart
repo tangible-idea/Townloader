@@ -875,7 +875,7 @@ class _PlacesMapScreenState extends State<PlacesMapScreen>
                               vertical: 9,
                             ),
                             child: Text(
-                              '${widget.title ?? widget.category ?? s.mapAll} · ${s.linksPlaceCount(_pins.length)}',
+                              '${widget.title ?? widget.category ?? s.mapAll} ${_pins.length}',
                               overflow: TextOverflow.ellipsis,
                               style: theme.textTheme.titleSmall,
                             ),
