@@ -59,6 +59,21 @@ class MapShare {
   String get browserUrl => url.replaceFirst('/m/$id', '/w/$id');
 }
 
+/// 공유할 때 보내는 글. 제목, 어떤 장소들인지, 링크 순서다.
+String shareMessage({
+  required String title,
+  required Iterable<String> places,
+  required String url,
+  required bool isKo,
+}) {
+  final names = places.toSet().toList();
+  final shown = names.take(5).join(', ');
+  final rest = names.length - 5;
+  final summary =
+      rest <= 0 ? shown : (isKo ? '$shown 외 $rest곳' : '$shown +$rest more');
+  return [title, if (summary.isNotEmpty) '📍 $summary', url].join('\n');
+}
+
 /// 공유 링크로 받은 지도. 장소와 원문 링크만 있다.
 class PublicMap {
   const PublicMap({required this.category, required this.links});

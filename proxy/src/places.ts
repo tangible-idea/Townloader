@@ -352,13 +352,31 @@ export function splitPlaceLine(text: string): Omit<Candidate, "imageIndex">[] {
   );
   const [rawName, ...rest] = normalized.split(/\s*[|｜]\s*/);
   const address = cleanAddress(rest.join(" ")) || null;
+  // 물결로 나누기 전에 날짜부터 뗀다. "08.28~09.07" 이 나뉘면 "09.07" 이 이름처럼 남는다.
   // "창덕궁~경복궁" 처럼 물결로 이은 이름도 따로 찾는다.
   return rawName
+    .replace(TRAILING_DATES, "")
     .split(new RegExp(`\\s+(?:&|＆|및)\\s+|\\s*[${TILDES}]+\\s*`, "u"))
     .map(cleanPlaceName)
-    .filter((name) => name.length >= 2)
+    // 글자가 하나도 없으면("07", "10.26") 장소 이름이 아니다.
+    .filter((name) => name.length >= 2 && /\p{L}/u.test(name))
     .map((name) => ({ name, address }));
 }
+
+/** 날짜 하나. "09.27", "9/27", "2025.09.27", "9월 27일", 뒤에 요일 "(토)" 가 붙기도 한다. */
+const DATE =
+  "(?:(?:(?:19|20)?\\d{2}[./])?(?:0?[1-9]|1[0-2])[./](?:0?[1-9]|[12]\\d|3[01])\\.?" +
+  "|(?:0?[1-9]|1[0-2])월\\s*(?:0?[1-9]|[12]\\d|3[01])일)" +
+  "(?:\\s*\\([월화수목금토일]\\))?";
+
+/**
+ * 줄 끝의 행사 날짜나 기간: "덕수궁 밤의 석조전 09.10~10.26", "책 읽는 맑은냇가 ~11.02".
+ * 끝에 있을 때만 뗀다. "4.19 민주묘지", "5.18기념공원" 은 숫자가 이름의 일부다.
+ */
+const TRAILING_DATES = new RegExp(
+  `[\\s${TILDES}]*(?<![\\d./])${DATE}(?:\\s*[${TILDES}\\-–—]\\s*(?:${DATE}|\\d{1,2}일?))?[\\s${TILDES}]*$`,
+  "u",
+);
 
 /**
  * 장소 이름 앞뒤에 붙은 군더더기를 뗀다.
@@ -377,7 +395,8 @@ export function cleanPlaceName(text: string): string {
     name = name
       .replace(/^[\s@＠#＃📍•·\-–—*]+/u, "")
       .replace(/^[\u2460-\u2473\u2776-\u277F\u24F5-\u24FE]\s*/u, "")
-      .replace(/^(?:no\.?\s*)?(\d{1,2})(?:\s*[.)\]:]\s*|\s+|(?=[^\d\s]))(?![번호층차월일년인세명개곳위등])/iu, (match, n) =>
+      // 점 바로 뒤에 숫자가 오면("4.19 민주묘지") 목록 번호가 아니다.
+      .replace(/^(?:no\.?\s*)?(\d{1,2})(?:\s*[)\]:]\s*|\s*\.(?!\d)\s*|\s+|(?=[^\d\s.]))(?![번호층차월일년인세명개곳위등])/iu, (match, n) =>
         Number(n) >= 1 && Number(n) <= 20 ? "" : match,
       )
       .replace(TRAILING_DECORATION, "")

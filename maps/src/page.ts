@@ -20,9 +20,11 @@ export function renderMapPage(
 ): string {
   const title = `${map.category} · Townloader`;
   const cover = map.posts.find((post) => post.coverUrl)?.coverUrl ?? null;
+  const names = [...new Set(map.places.map((place) => place.name))];
   return layout({
     title,
-    description: `${map.places.length} places · ${map.posts.length} posts`,
+    previewTitle: map.category,
+    description: placesSummary(names),
     pageUrl,
     image: cover,
     body: `
@@ -533,14 +535,24 @@ if (/android/i.test(navigator.userAgent)) document.getElementById("get-app").hre
   });
 }
 
+/** 링크 미리보기에 쓸 장소 이름들. 해시태그가 섞인 캡션 대신 어떤 곳인지를 보여 준다. */
+function placesSummary(names: string[]): string {
+  const shown = names.slice(0, 5).join(", ");
+  const rest = names.length - 5;
+  if (rest <= 0) return shown;
+  return /[가-힣]/.test(shown) ? `${shown} 외 ${rest}곳` : `${shown} +${rest} more`;
+}
+
 function layout(options: {
   title: string;
+  /** 링크 미리보기 제목. 없으면 [title]. */
+  previewTitle?: string;
   description: string;
   pageUrl: string;
   image: string | null;
   body: string;
 }): string {
-  const { title, description, pageUrl, image, body } = options;
+  const { title, previewTitle, description, pageUrl, image, body } = options;
   return `<!doctype html>
 <html>
 <head>
@@ -548,7 +560,7 @@ function layout(options: {
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>${escapeHtml(title)}</title>
 <meta name="description" content="${escapeHtml(description)}">
-<meta property="og:title" content="${escapeHtml(title)}">
+<meta property="og:title" content="${escapeHtml(previewTitle ?? title)}">
 <meta property="og:description" content="${escapeHtml(description)}">
 ${pageUrl ? `<meta property="og:url" content="${escapeHtml(pageUrl)}">` : ""}
 ${image ? `<meta property="og:image" content="${escapeHtml(image)}">` : ""}

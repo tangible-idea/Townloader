@@ -376,7 +376,7 @@ export interface PublicMap {
 export function cleanCaption(caption: string | null | undefined): string | null {
   if (!caption) return null;
   const text = caption
-    .replace(/(^|\s)#[^\s#]+/gu, "$1")
+    .replace(/(^|\s)[#＃]\S*/gu, "$1")
     .split("\n")
     .map((line) => line.replace(/[ \t\u3000]+/g, " ").trim())
     .join("\n")

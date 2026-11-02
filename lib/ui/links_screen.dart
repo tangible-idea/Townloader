@@ -152,6 +152,15 @@ class LinksScreenState extends State<LinksScreen>
     final displayTitle = label ?? shareKey;
     final account = context.read<AccountController>();
     final messenger = ScaffoldMessenger.of(context);
+    final postCode = isPost ? shareKey.substring('post:'.length) : null;
+    final places = [
+      for (final link in context.read<LinksController>().allLinks)
+        if (postCode != null
+            ? link.code == postCode
+            : link.category == shareKey)
+          for (final place in link.places) place.name,
+    ];
+    final isKo = s.isKo;
     final box = context.findRenderObject() as RenderBox?;
     final origin =
         box == null ? null : box.localToGlobal(Offset.zero) & box.size;
@@ -249,7 +258,13 @@ class LinksScreenState extends State<LinksScreen>
           mode: LaunchMode.externalApplication,
         );
       } else if (action == 'send') {
-        await _sendShareLink(share, origin, subject: displayTitle);
+        await _sendShareLink(
+          share,
+          origin,
+          subject: displayTitle,
+          places: places,
+          isKo: isKo,
+        );
       } else if (action == 'stop') {
         await account.unshare(shareKey);
         show(s.shareStopped);
@@ -262,11 +277,18 @@ class LinksScreenState extends State<LinksScreen>
   Future<void> _sendShareLink(
     MapShare share,
     Rect? origin, {
-    String? subject,
+    required String subject,
+    required List<String> places,
+    required bool isKo,
   }) => SharePlus.instance.share(
     ShareParams(
-      uri: Uri.parse(share.url),
-      subject: subject ?? share.category,
+      text: shareMessage(
+        title: subject,
+        places: places,
+        url: share.url,
+        isKo: isKo,
+      ),
+      subject: subject,
       sharePositionOrigin: origin,
     ),
   );
@@ -721,8 +743,8 @@ class _LinkCard extends StatelessWidget {
                   ),
                 ],
               ),
-              if (link.places.isEmpty &&
-                  link.status == LinkStatus.analyzing) ...[
+              // 다시 찾을 때도 예전 칩 대신 뼈대를 보여 준다.
+              if (link.status == LinkStatus.analyzing) ...[
                 const SizedBox(height: 10),
                 const PlaceChipsSkeleton(),
               ] else if (link.places.isNotEmpty) ...[
