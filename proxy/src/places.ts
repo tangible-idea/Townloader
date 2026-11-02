@@ -82,10 +82,10 @@ export function parsePlacesRequest(raw: unknown): PlacesRequest {
     tag:
       tag && Number.isFinite(tag.lat) && Number.isFinite(tag.lng)
         ? {
-            name: String(tag.name ?? "").slice(0, 120),
+            name: cleanTagName(String(tag.name ?? "")).slice(0, 120),
             lat: tag.lat,
             lng: tag.lng,
-            address: tag.address ? String(tag.address).slice(0, 200) : null,
+            address: tag.address ? stripTildes(String(tag.address)).slice(0, 200) || null : null,
           }
         : null,
     caption: String(value.caption ?? "").slice(0, MAX_CAPTION),
@@ -312,8 +312,31 @@ async function jev(
 
 /** "@수원시 팔달구 화서동 436-1" → "수원시 팔달구 화서동 436-1". */
 function cleanAddress(text: string): string {
-  return text.replace(/^[\s@＠#＃📍]+/u, "").trim();
+  return stripTildes(text.replace(/^[\s@＠#＃📍]+/u, ""));
 }
+
+/**
+ * 물결 기호들. 반각 "~", 전각 "～", 물결 대시 "〜"·"〰", 수학 기호 "∼"·"∽",
+ * 작은 물결 "˜"·"⁓". 장소 이름·주소에 쓰이는 일은 없고 OCR·캡션에서 꾸밈으로 붙는다.
+ */
+const TILDES = "~\\u02DC\\u2053\\u223C\\u223D\\u301C\\u3030\\uFF5E";
+const TILDE_RUN = new RegExp(`\\s*[${TILDES}]+\\s*`, "gu");
+
+/** 글 어디에 있든 물결 기호를 지우고 공백을 하나로 모은다. */
+export function stripTildes(text: string): string {
+  return text.replace(TILDE_RUN, " ").replace(/\s{2,}/g, " ").trim();
+}
+
+/**
+ * 위치 태그의 이름처럼 이미 장소 이름인 글에서 꾸밈만 뗀다. 목록 번호는 건드리지 않는다
+ * ("3 Brothers" 같은 이름이 있을 수 있어서).
+ */
+export function cleanTagName(text: string): string {
+  return stripTildes(text).replace(TRAILING_DECORATION, "").trim() || text.trim();
+}
+
+/** 이름 끝의 문장 부호·장식 기호·이모지. */
+const TRAILING_DECORATION = /[\s\-–—…·.,!?\p{Extended_Pictographic}\uFE0F\u200D]+$/u;
 
 /**
  * "덕수궁 | 서울 중구 정동" → 이름과 주소. "가평 청평호 & 남이섬" 처럼 묶인 이름은 나눈다.
@@ -325,9 +348,10 @@ export function splitPlaceLine(text: string): Omit<Candidate, "imageIndex">[] {
     " | ",
   );
   const [rawName, ...rest] = normalized.split(/\s*[|｜]\s*/);
-  const address = rest.join(" ").trim() || null;
+  const address = cleanAddress(rest.join(" ")) || null;
+  // "창덕궁~경복궁" 처럼 물결로 이은 이름도 따로 찾는다.
   return rawName
-    .split(/\s+(?:&|＆|및)\s+/)
+    .split(new RegExp(`\\s+(?:&|＆|및)\\s+|\\s*[${TILDES}]+\\s*`, "u"))
     .map(cleanPlaceName)
     .filter((name) => name.length >= 2)
     .map((name) => ({ name, address }));
@@ -338,13 +362,13 @@ export function splitPlaceLine(text: string): Omit<Candidate, "imageIndex">[] {
  *
  *   "#수원 서호공원" → "수원 서호공원"   해시태그·멘션 표시
  *   "1창덕궁", "4. 올림픽공원", "①남산" → 번호 없는 이름   목록 번호
- *   "창덕궁~", "창덕궁 ✨" → "창덕궁"   끝의 물결·장식 기호
+ *   "창덕궁~", "~창덕궁~ 🌸", "창덕궁 ✨" → "창덕궁"   물결(어디에 있든)·끝의 장식 기호
  *
  * "63빌딩", "7번국도", "1913송정역시장" 처럼 숫자가 이름의 일부인 것은 남긴다:
  * 목록 번호는 20 이하이고, 바로 뒤에 번·호·층 같은 세는 말이 오지 않는다.
  */
 export function cleanPlaceName(text: string): string {
-  let name = text.trim();
+  let name = stripTildes(text);
   for (let i = 0; i < 3; i++) {
     const before = name;
     name = name
@@ -353,7 +377,7 @@ export function cleanPlaceName(text: string): string {
       .replace(/^(?:no\.?\s*)?(\d{1,2})(?:\s*[.)\]:]\s*|\s+|(?=[^\d\s]))(?![번호층차월일년인세명개곳위등])/iu, (match, n) =>
         Number(n) >= 1 && Number(n) <= 20 ? "" : match,
       )
-      .replace(/[\s~〜～∼\-–—…·.,!?✨⭐️❤️💕🔥]+$/u, "")
+      .replace(TRAILING_DECORATION, "")
       .trim();
     if (name === before) break;
   }

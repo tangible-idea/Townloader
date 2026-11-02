@@ -15,6 +15,16 @@ enum PlaceSource {
   );
 }
 
+/// 장소 이름에 붙은 물결 기호("창덕궁~", "～남산～")를 지운다. 예전에 저장한 장소에도
+/// 남아 있을 수 있어 읽을 때 정리한다. 기호 목록은 `proxy/src/places.ts` 의 `TILDES` 와 같다.
+String stripPlaceTildes(String name) {
+  final cleaned = name
+      .replaceAll(RegExp(r'\s*[~\u02DC\u2053\u223C\u223D\u301C\u3030\uFF5E]+\s*'), ' ')
+      .replaceAll(RegExp(r'\s{2,}'), ' ')
+      .trim();
+  return cleaned.isEmpty ? name.trim() : cleaned;
+}
+
 /// 저장한 글에서 찾은 장소 하나. `/places` 응답 형식과 같다.
 class SavedPlace {
   const SavedPlace({
@@ -35,7 +45,7 @@ class SavedPlace {
   });
 
   factory SavedPlace.fromJson(Map<String, dynamic> json) => SavedPlace(
-    name: json['name'] as String? ?? '',
+    name: stripPlaceTildes(json['name'] as String? ?? ''),
     lat: (json['lat'] as num).toDouble(),
     lng: (json['lng'] as num).toDouble(),
     source: PlaceSource.parse(json['source']),
