@@ -296,7 +296,7 @@ async function digestWithClaude(env: Env, body: SummarizeRequest): Promise<Summa
 
 /** 장소 결과는 글이 바뀌지 않는 한 그대로라 오래 둔다. 로직을 바꾸면 버전을 올린다. */
 const PLACES_CACHE_TTL_SECONDS = 60 * 60 * 24 * 30;
-const PLACES_CACHE_VERSION = "v6";
+const PLACES_CACHE_VERSION = "v7";
 
 async function handlePlaces(request: Request, env: Env): Promise<Response> {
   let body;
