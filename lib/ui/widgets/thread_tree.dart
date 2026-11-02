@@ -545,7 +545,8 @@ class _Thumb extends StatelessWidget {
           fit: StackFit.expand,
           children: [
             NetworkThumb(
-              url: first.thumbnailUrl ?? first.best?.url,
+              // 동영상 파일은 이미지로 그릴 수 없다.
+              url: first.thumbnailUrl ?? (first.isVideo ? null : first.best?.url),
               icon: first.isVideo ? Icons.movie_outlined : Icons.image_outlined,
             ),
             if (first.isVideo || items.length > 1)

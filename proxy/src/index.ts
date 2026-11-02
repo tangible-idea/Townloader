@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 
 import {
   findPlaces,
+  jev,
   geocodeCandidates,
   parsePlacesRequest,
   type GeoCandidate,
@@ -35,6 +36,9 @@ installUsageMeter();
  *   POST /title { "code": "...", "lang": "ko" | "en", "caption": "...", "places": ["..."], "lines": ["..."] }
  *   -> { "title": "예쁜 보은 카페 모음.ZIP" } — 저장한 글 하나의 짧은 대표 제목.
  *
+ *   POST /categorize { "categories": ["..."], "title": "...", "caption": "..." }
+ *   -> { "category": "맛집" | null } — 제목과 본문만 읽고 고른다. 뚜렷하게 맞는 것이 없으면 null.
+ *
  *   POST /tts  { "text": "..." }
  *   -> Poe 음성 봇(ElevenLabs) 응답을 그대로 돌려준다. 앱이 응답에서 오디오 주소를 꺼낸다.
  *
@@ -63,6 +67,8 @@ export interface Env extends PlacesEnv {
   TITLE_LIMITER: RateLimit;
   /** 요약 평가의 IP 별 분당 제한. */
   FEEDBACK_LIMITER: RateLimit;
+  /** 카테고리 고르기의 IP 별 분당 제한. */
+  CATEGORY_LIMITER: RateLimit;
   /** 이 Worker 자신. 좌표 찾기를 따로 실행해 실행당 바깥 요청 한도를 나눠 쓴다. */
   SELF: Fetcher;
 }
@@ -114,7 +120,17 @@ async function handle(request: Request, env: Env, ctx: ExecutionContext): Promis
   const isTts = request.method === "POST" && url.pathname === "/tts";
   const isTitle = request.method === "POST" && url.pathname === "/title";
   const isFeedback = request.method === "POST" && url.pathname === "/summary-feedback";
-  if (!isSummary && !isHiker && !isPlaces && !isTts && !isTitle && !isGeocode && !isFeedback) {
+  const isCategorize = request.method === "POST" && url.pathname === "/categorize";
+  if (
+    !isSummary &&
+    !isHiker &&
+    !isPlaces &&
+    !isTts &&
+    !isTitle &&
+    !isGeocode &&
+    !isFeedback &&
+    !isCategorize
+  ) {
     return json({ error: "not_found" }, 404);
   }
   if (request.headers.get("x-app-token") !== env.APP_TOKEN) {
@@ -129,6 +145,7 @@ async function handle(request: Request, env: Env, ctx: ExecutionContext): Promis
   if (isTts) return handleTts(request, env);
   if (isTitle) return handleTitle(request, env);
   if (isFeedback) return handleFeedback(request, env);
+  if (isCategorize) return handleCategorize(request, env);
 
   let body: SummarizeRequest;
   try {
@@ -342,6 +359,65 @@ function parseDigest(text: string): { summary: string; comments: string[] } {
         .slice(0, 4)
     : [];
   return { summary: lines.join("\n"), comments };
+}
+
+// ── 카테고리 고르기 ──────────────────────────────────────────────────────────
+
+const NO_CATEGORY = "none of these";
+const MAX_CATEGORIES = 30;
+
+/** 이보다 확실하지 않으면 사용자가 보던 카테고리에 그대로 둔다. */
+const MIN_CATEGORY_PROBABILITY = 0.5;
+
+async function handleCategorize(request: Request, env: Env): Promise<Response> {
+  const ip = request.headers.get("cf-connecting-ip") ?? "unknown";
+  const { success } = await env.CATEGORY_LIMITER.limit({ key: ip });
+  if (!success) return json({ error: "rate_limited" }, 429);
+
+  let raw: { categories?: unknown; title?: unknown; caption?: unknown };
+  try {
+    raw = (await request.json()) as typeof raw;
+  } catch {
+    return json({ error: "bad_request" }, 400);
+  }
+  const categories = (Array.isArray(raw.categories) ? raw.categories : [])
+    .filter((name): name is string => typeof name === "string" && name.trim() !== "")
+    .filter((name) => name !== NO_CATEGORY)
+    .slice(0, MAX_CATEGORIES);
+  const title = typeof raw.title === "string" ? raw.title.slice(0, 200) : "";
+  const caption = typeof raw.caption === "string" ? raw.caption.slice(0, MAX_TEXT) : "";
+  if (categories.length < 2 || (!title.trim() && !caption.trim())) {
+    return json({ category: null });
+  }
+
+  const criteria: Record<string, string> = {};
+  for (const name of categories) {
+    criteria[name] = `The post's subject belongs in the user's folder named "${name}".`;
+  }
+  criteria[NO_CATEGORY] = "None of the user's folders clearly fits the post's subject.";
+
+  try {
+    const answers = await jev(
+      env,
+      { post: { title, caption } },
+      {
+        category: {
+          type: "choice",
+          instructions:
+            "The user is saving this social media post into one of their own folders. " +
+            "Judging only from `post.title` and `post.caption`, which folder fits the post best?",
+          criteria,
+        },
+      },
+    );
+    const choice = answers.category?.choice;
+    const probability = choice ? (answers.category?.probabilities?.[choice] ?? 0) : 0;
+    const picked =
+      choice && choice !== NO_CATEGORY && probability >= MIN_CATEGORY_PROBABILITY ? choice : null;
+    return json({ category: picked });
+  } catch (error) {
+    return json({ error: "upstream_error", detail: String(error) }, 502);
+  }
 }
 
 // ── 요약 A/B 테스트 ──────────────────────────────────────────────────────────

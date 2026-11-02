@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 
 import '../config/app_config.dart';
 import '../data/summary_client.dart';
@@ -23,6 +23,7 @@ class SettingsController extends ChangeNotifier {
   /// 요약 평가. 값은 '[SummaryVote.name]:평가 ID'. 들어온 순서를 지킨다.
   Map<String, String> _summaryVotes = {};
   String? _languageCode;
+  bool _darkTheme = false;
   bool _isLoaded = false;
   SettingsBackend _backend = SettingsBackend.keychain;
 
@@ -37,6 +38,10 @@ class SettingsController extends ChangeNotifier {
   /// 사용자가 직접 고른 언어 코드('ko' 또는 'en'). 기기 설정을 따르면 null.
   String? get languageCode => _languageCode;
   Locale? get locale => _languageCode == null ? null : Locale(_languageCode!);
+
+  /// 어두운 테마를 쓸지. 기기 설정이나 시간과 상관없이 사용자가 고른 대로 둔다.
+  bool get darkTheme => _darkTheme;
+  ThemeMode get themeMode => _darkTheme ? ThemeMode.dark : ThemeMode.light;
 
   /// 개인 보관 안내에 동의했는지. 동의 전에는 저장할 때마다 안내를 띄운다.
   bool get personalUseAcknowledged => _personalUseAck;
@@ -61,6 +66,7 @@ class SettingsController extends ChangeNotifier {
     _aiSummaryConsent = await _store.readAiSummaryConsent();
     _summaryVotes = _decodeVotes(await _store.readSummaryVotes());
     _languageCode = await _store.readLanguage();
+    _darkTheme = await _store.readDarkTheme();
     S.overrideLanguageCode = _languageCode;
     _isLoaded = true;
     notifyListeners();
@@ -73,6 +79,13 @@ class SettingsController extends ChangeNotifier {
     S.overrideLanguageCode = normalized;
     notifyListeners();
     await _store.writeLanguage(normalized);
+  }
+
+  Future<void> setDarkTheme(bool value) async {
+    if (_darkTheme == value) return;
+    _darkTheme = value;
+    notifyListeners();
+    await _store.writeDarkTheme(value);
   }
 
   Future<void> setQuality(QualityPreference value) async {

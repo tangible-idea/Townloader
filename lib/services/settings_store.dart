@@ -64,6 +64,7 @@ class SettingsStore {
   static const _keySummaryVotes = 'summary_votes';
   static const _keyAccountSession = 'account_session';
   static const _keyLanguage = 'app_language';
+  static const _keyDarkTheme = 'dark_theme';
 
   /// 키체인이 정말 동작하는지 한 번만 확인하고 결과를 재사용한다.
   static const _canary = '__townloader_probe';
@@ -142,6 +143,12 @@ class SettingsStore {
   }
 
   Future<bool> writeLanguage(String? code) => _write(_keyLanguage, code ?? '');
+
+  /// 어두운 테마를 쓸지. 기본값은 밝은 테마.
+  Future<bool> readDarkTheme() async => (await _read(_keyDarkTheme)) == 'true';
+
+  Future<bool> writeDarkTheme(bool value) =>
+      _write(_keyDarkTheme, value.toString());
 
   Future<String?> _read(String key) async {
     if (await backend == SettingsBackend.keychain) {

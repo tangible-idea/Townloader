@@ -26,11 +26,14 @@ class LinksController extends ChangeNotifier {
     analyze,
     Future<String?> Function(SavedLink link, {required bool isKo})? title,
     Future<SavedPlace> Function(SavedPlace place)? enrichPlace,
+    Future<String?> Function(SavedLink link, List<String> categories)?
+    categorize,
   }) : _store = store,
        _resolve = resolve,
        _analyze = analyze,
        _title = title,
-       _enrichPlace = enrichPlace;
+       _enrichPlace = enrichPlace,
+       _categorize = categorize;
 
   factory LinksController.live(
     IgRepository repository,
@@ -41,6 +44,7 @@ class LinksController extends ChangeNotifier {
     analyze: analyzer.analyze,
     title: analyzer.title,
     enrichPlace: analyzer.enrichPlace,
+    categorize: analyzer.category,
   );
 
   final LinksStore _store;
@@ -51,6 +55,18 @@ class LinksController extends ChangeNotifier {
   /// 분석이 끝난 글의 대표 제목을 짓는다. 없으면 제목 없이 둔다.
   final Future<String?> Function(SavedLink link, {required bool isKo})? _title;
   final Future<SavedPlace> Function(SavedPlace place)? _enrichPlace;
+
+  /// 글의 제목과 본문으로 맞는 카테고리를 고른다. 없으면 붙여넣은 카테고리에 둔다.
+  final Future<String?> Function(SavedLink link, List<String> categories)?
+  _categorize;
+
+  /// 새로 들어와 아직 카테고리를 고르지 않은 글. 다시 찾기로는 옮기지 않는다.
+  final Set<String> _uncategorized = {};
+
+  /// 자동으로 옮긴 마지막 글. 화면이 알리고 되돌릴 수 있게 한다.
+  final autoMoved = ValueNotifier<({String code, String from, String to})?>(
+    null,
+  );
   bool _titling = false;
   bool _enriching = false;
 
@@ -113,8 +129,8 @@ class LinksController extends ChangeNotifier {
     }
     if (!changed) return;
     _categories = categories;
-    _links = byCode.values.toList()
-      ..sort((a, b) => b.savedAt.compareTo(a.savedAt));
+    _links =
+        byCode.values.toList()..sort((a, b) => b.savedAt.compareTo(a.savedAt));
     _selected ??= _categories.firstOrNull;
     notifyListeners();
     await _save();
@@ -127,9 +143,10 @@ class LinksController extends ChangeNotifier {
   Future<void> load({required bool isKo}) async {
     _isKo = isKo;
     final data = await _store.load();
-    _categories = data?.categories.isNotEmpty == true
-        ? data!.categories
-        : (isKo ? const ['여행', '맛집'] : const ['Travel', 'Food']);
+    _categories =
+        data?.categories.isNotEmpty == true
+            ? data!.categories
+            : (isKo ? const ['여행', '맛집'] : const ['Travel', 'Food']);
     _links = data?.links ?? const [];
     _selected = _categories.first;
     _loaded = true;
@@ -192,6 +209,7 @@ class LinksController extends ChangeNotifier {
     }
 
     _links = [...fresh.reversed, ..._links];
+    _uncategorized.addAll(fresh.map((link) => link.code));
     _queue.addAll(fresh.map((link) => link.code));
     notifyListeners();
     await _save();
@@ -324,10 +342,11 @@ class LinksController extends ChangeNotifier {
     _titling = true;
     try {
       while (true) {
-        final link = _links
-            .where((l) => l.status == LinkStatus.ready && _needsTitle(l))
-            .where((l) => !_untitled.contains(l.code))
-            .firstOrNull;
+        final link =
+            _links
+                .where((l) => l.status == LinkStatus.ready && _needsTitle(l))
+                .where((l) => !_untitled.contains(l.code))
+                .firstOrNull;
         if (link == null) break;
         final postIsKo = LinkAnalyzer.isKoreanPost(
           caption: link.caption,
@@ -396,6 +415,7 @@ class LinksController extends ChangeNotifier {
         ),
       );
       notifyListeners();
+      await _autoCategorize(link.code);
 
       final places = await _analyze(post, isKo: _isKo);
       _replace(
@@ -415,6 +435,8 @@ class LinksController extends ChangeNotifier {
         );
         final name = await _title(ready, isKo: postIsKo);
         if (name != null) _replace(link.code, (l) => l.copyWith(title: name));
+        // 본문이 없던 글은 제목으로 고른다.
+        await _autoCategorize(link.code);
       }
     } on HikerException catch (error) {
       _fail(link, error.message);
@@ -425,6 +447,35 @@ class LinksController extends ChangeNotifier {
     }
     notifyListeners();
     await _save();
+  }
+
+  /// 고르는 동안 사용자가 직접 옮겼으면 그대로 둔다.
+  Future<void> _autoCategorize(String code) async {
+    final categorize = _categorize;
+    final link = _find(code);
+    if (categorize == null ||
+        link == null ||
+        !_uncategorized.contains(code) ||
+        _categories.length < 2) {
+      return;
+    }
+    if ((link.caption ?? '').trim().isEmpty &&
+        (link.title ?? '').trim().isEmpty) {
+      return;
+    }
+    _uncategorized.remove(code);
+    final picked = await categorize(link, _categories);
+    final current = _find(code);
+    if (picked == null ||
+        current == null ||
+        current.category != link.category ||
+        picked == link.category ||
+        !_categories.contains(picked)) {
+      return;
+    }
+    _replace(code, (l) => l.copyWith(category: picked));
+    autoMoved.value = (code: code, from: link.category, to: picked);
+    notifyListeners();
   }
 
   void _fail(SavedLink link, String message) => _replace(

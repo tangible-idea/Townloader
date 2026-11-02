@@ -26,9 +26,10 @@ class MediaParser {
     final productType = (json['product_type'] as String?)?.toLowerCase() ?? '';
     final kind = _kindOf(mediaType, productType);
 
-    final items = mediaType == _typeCarousel
-        ? _carouselItems(json, fallbackId: pk)
-        : [_singleItem(json, id: pk)];
+    final items =
+        mediaType == _typeCarousel
+            ? _carouselItems(json, fallbackId: pk)
+            : [_singleItem(json, id: pk)];
 
     return IgPost(
       pk: pk,
@@ -103,16 +104,42 @@ class MediaParser {
     return items;
   }
 
+  /// `thumbnail_url` 이 없는 동영상(Threads 등)의 표지. 썸네일로 쓸 만한 가장 작은 후보.
+  static String? _videoPoster(Map<String, dynamic> json) {
+    final versions = json['image_versions2'];
+    final candidates = versions is Map ? versions['candidates'] : null;
+    if (candidates is! List) return null;
+    String? best;
+    int? bestWidth;
+    for (final candidate in candidates.whereType<Map>()) {
+      final url = candidate['url'];
+      if (url is! String || url.isEmpty) continue;
+      final width = _int(candidate['width']) ?? 0;
+      final better =
+          best == null ||
+          (width >= 320 && (bestWidth! < 320 || width < bestWidth)) ||
+          (bestWidth! < 320 && width > bestWidth);
+      if (better) {
+        best = url;
+        bestWidth = width;
+      }
+    }
+    return best;
+  }
+
   /// 미디어 객체 하나에서 다운로드 가능한 변형들을 뽑아낸다.
   static IgItem _singleItem(Map<String, dynamic> json, {required String id}) {
     final mediaType = _int(json['media_type']) ?? _typePhoto;
     final isVideo = mediaType == _typeVideo;
-    final thumbnailUrl = json['thumbnail_url'] as String?;
+    final thumbnailUrl =
+        json['thumbnail_url'] as String? ??
+        (isVideo ? _videoPoster(json) : null);
     final duration = _double(json['video_duration']);
 
-    final variants = isVideo
-        ? _videoVariants(json, duration: duration)
-        : _photoVariants(json, thumbnailUrl: thumbnailUrl);
+    final variants =
+        isVideo
+            ? _videoVariants(json, duration: duration)
+            : _photoVariants(json, thumbnailUrl: thumbnailUrl);
 
     return IgItem(
       id: id,
@@ -176,9 +203,10 @@ class MediaParser {
     final seen = <String>{};
 
     final versions = json['image_versions'] ?? json['image_versions2'];
-    final candidates = versions is Map<String, dynamic>
-        ? versions['candidates'] // v2 형태는 candidates 배열로 한 겹 더 감싼다
-        : versions;
+    final candidates =
+        versions is Map<String, dynamic>
+            ? versions['candidates'] // v2 형태는 candidates 배열로 한 겹 더 감싼다
+            : versions;
 
     if (candidates is List) {
       for (final entry in candidates) {

@@ -48,7 +48,33 @@ class S {
   String get linksEmptyDesc => isKo
       ? '여행지나 맛집 글의 링크를 붙여넣으면 장소를 찾아 모아 둬요'
       : 'Paste links to travel or food posts and their places are collected here';
-  String get linksAnalyzing => isKo ? '장소 찾는 중…' : 'Finding places…';
+  /// 장소를 찾는 동안의 문구. 글마다 하나로 정해 다시 그려도 바뀌지 않는다.
+  String linksAnalyzing(String code) {
+    final lines = isKo ? _analyzingKo : _analyzingEn;
+    return lines[code.hashCode.abs() % lines.length];
+  }
+
+  static const _analyzingKo = [
+    '맛집 뿌실 곳 미리 찾아보는 중…',
+    '이번 주말 털러 갈 곳 캐는 중…',
+    '웨이팅 각 재는 중…',
+    '친구한테 아는 척할 곳 찾는 중…',
+    '지도에 핀 꽂을 준비 중…',
+    '인생샷 스팟 스캔 중…',
+    '저장만 하고 안 갈 곳 찾는 중… 농담이에요',
+    '글 속에 숨은 장소 털어보는 중…',
+  ];
+
+  static const _analyzingEn = [
+    'Scouting spots to conquer…',
+    'Plotting your next food crawl…',
+    'Calculating the queue situation…',
+    'Finding places to flex on your friends…',
+    'Sharpening the map pins…',
+    'Scanning for main-character spots…',
+    "Finding places you'll save and never visit… kidding",
+    'Shaking this post for hidden spots…',
+  ];
   String linksPlaceCount(int count) =>
       isKo ? '장소 $count곳' : (count == 1 ? '1 place' : '$count places');
   String get linksNoPlaces =>
@@ -279,6 +305,8 @@ class S {
 
   // ── Settings ──
   String get settingsTitle => isKo ? '설정' : 'Settings';
+  String get appearanceSection => isKo ? '화면' : 'Appearance';
+  String get darkTheme => isKo ? '다크 모드' : 'Dark mode';
   String get languageSection => isKo ? '언어' : 'Language';
   String get languageSystem => isKo ? '기기 설정 따르기' : 'System default';
   String get languageKorean => '한국어';

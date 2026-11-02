@@ -18,6 +18,12 @@ class _NoKeyStore extends SettingsStore {
   Future<String?> readLanguage() async => null;
 
   @override
+  Future<bool> readDarkTheme() async => false;
+
+  @override
+  Future<bool> writeDarkTheme(bool value) async => true;
+
+  @override
   Future<String?> readSummaryVotes() async => null;
 
   @override

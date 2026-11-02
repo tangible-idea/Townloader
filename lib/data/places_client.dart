@@ -191,9 +191,8 @@ class PlacesClient {
         final cate2 = (raw['cate_name_depth2'] as String? ?? '').trim();
         final tel = (raw['tel'] as String? ?? '').trim();
         return _KakaoHit(
-          address: newAddr.isNotEmpty
-              ? newAddr
-              : (addr.isNotEmpty ? addr : null),
+          address:
+              newAddr.isNotEmpty ? newAddr : (addr.isNotEmpty ? addr : null),
           category: cate.isNotEmpty ? cate : (cate2.isNotEmpty ? cate2 : null),
           phone: tel.isNotEmpty ? tel : null,
           photoUrl: _kakaoThumb(rawImg),
@@ -243,10 +242,8 @@ class PlacesClient {
   };
 
   static List<String> _queryVariants(String name) {
-    final words = name
-        .split(RegExp(r'\s+'))
-        .where((w) => w.isNotEmpty)
-        .toList();
+    final words =
+        name.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
     return [
       for (var n = words.length; n >= 1; n--)
         if (words.take(n).join().length >= 2) words.take(n).join(' '),
@@ -255,14 +252,15 @@ class PlacesClient {
 
   static List<String> _areaTokens(String? address) {
     if (address == null || address.isEmpty) return const [];
-    final tokens = address
-        .split(RegExp(r'\s+'))
-        .where(
-          (w) =>
-              RegExp(r'(동|읍|면|리|가|구|군)$').hasMatch(w) ||
-              RegExp(r'동\d*가$').hasMatch(w),
-        )
-        .toList();
+    final tokens =
+        address
+            .split(RegExp(r'\s+'))
+            .where(
+              (w) =>
+                  RegExp(r'(동|읍|면|리|가|구|군)$').hasMatch(w) ||
+                  RegExp(r'동\d*가$').hasMatch(w),
+            )
+            .toList();
     return tokens.reversed.toList();
   }
 
@@ -289,6 +287,37 @@ class PlacesClient {
     RegExp(r'[\s\p{P}\p{S}]', unicode: true),
     '',
   );
+
+  /// 글의 제목과 본문만 읽어 [categories] 중 맞는 곳을 고른다. 뚜렷하지 않거나 오류면 null.
+  Future<String?> category({
+    required List<String> categories,
+    String? title,
+    String? caption,
+  }) async {
+    if (!isConfigured) return null;
+    try {
+      final response = await _http
+          .post(
+            Uri.parse('$_baseUrl/categorize'),
+            headers: {
+              'content-type': 'application/json',
+              'x-app-token': _appToken,
+            },
+            body: jsonEncode({
+              'categories': categories,
+              'title': title ?? '',
+              'caption': caption ?? '',
+            }),
+          )
+          .timeout(const Duration(seconds: 15));
+      if (response.statusCode != 200) return null;
+      final data = jsonDecode(utf8.decode(response.bodyBytes));
+      final category = data is Map ? data['category'] : null;
+      return category is String ? category : null;
+    } on Exception {
+      return null;
+    }
+  }
 
   /// 저장한 글의 짧은 대표 제목. 못 지으면 null 이고, 오류도 null 로 넘긴다(제목은 없어도 된다).
   Future<String?> title({
@@ -401,10 +430,11 @@ class KakaoPlaceDetail {
     if (hours is Map) {
       final headline = hours['headline'];
       if (headline is Map) {
-        final parts = [
-          _nonEmpty(headline['display_text']),
-          _nonEmpty(headline['display_text_info']),
-        ].whereType<String>().toList();
+        final parts =
+            [
+              _nonEmpty(headline['display_text']),
+              _nonEmpty(headline['display_text_info']),
+            ].whereType<String>().toList();
         if (parts.isNotEmpty) openStatus = parts.join(' · ');
       }
       final week = hours['week_from_today'];
@@ -418,15 +448,14 @@ class KakaoPlaceDetail {
             final label = _nonEmpty(day['day_of_the_week_desc']);
             if (label == null) continue;
             final onDays = day['on_days'];
-            final time = onDays is Map
-                ? _nonEmpty(onDays['start_end_time_desc'])
-                : null;
+            final time =
+                onDays is Map ? _nonEmpty(onDays['start_end_time_desc']) : null;
             final lastOrder =
                 onDays is Map &&
-                    onDays['last_order_times_desc'] is List &&
-                    (onDays['last_order_times_desc'] as List).isNotEmpty
-                ? _nonEmpty((onDays['last_order_times_desc'] as List).first)
-                : null;
+                        onDays['last_order_times_desc'] is List &&
+                        (onDays['last_order_times_desc'] as List).isNotEmpty
+                    ? _nonEmpty((onDays['last_order_times_desc'] as List).first)
+                    : null;
             final line = [
               label,
               time ?? _nonEmpty(day['off_days_desc']) ?? '휴무',

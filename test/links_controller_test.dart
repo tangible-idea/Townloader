@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'dart:convert';
 
 import 'package:flutter/gestures.dart';
@@ -81,6 +83,80 @@ void main() {
     failing = {};
   });
 
+  group('카테고리 자동 분류', () {
+    LinksController auto(
+      Future<String?> Function(SavedLink, List<String>) categorize,
+    ) => LinksController(
+      store: store,
+      resolve:
+          (IgLink link) async =>
+              ResolveResult(title: '', posts: [_post(link.code!)]),
+      analyze: (post, {required isKo}) async => [_place],
+      categorize: categorize,
+    );
+
+    test('고른 카테고리로 옮기고 알린다', () async {
+      List<String>? asked;
+      final links = auto((link, categories) async {
+        asked = categories;
+        return '맛집';
+      });
+      await links.load(isKo: true);
+      await links.addFromText('instagram.com/p/DdK3PpFmpRJ/', isKo: true);
+      await pumpEventQueue();
+
+      expect(asked, ['여행', '맛집']);
+      expect(links.allLinks.single.category, '맛집');
+      expect(links.allLinks.single.status, LinkStatus.ready);
+      expect(links.autoMoved.value, (
+        code: 'DdK3PpFmpRJ',
+        from: '여행',
+        to: '맛집',
+      ));
+      expect((await store.load())!.links.single.category, '맛집');
+    });
+
+    test('고르지 못하거나 없는 이름이면 붙여넣은 카테고리에 둔다', () async {
+      for (final answer in [null, '없는 카테고리', '여행']) {
+        store = MemoryLinksStore();
+        final links = auto((_, _) async => answer);
+        await links.load(isKo: true);
+        await links.addFromText('instagram.com/p/DdK3PpFmpRJ/', isKo: true);
+        await pumpEventQueue();
+        expect(links.allLinks.single.category, '여행');
+        expect(links.autoMoved.value, isNull);
+      }
+    });
+
+    test('고르는 동안 직접 옮겼으면 덮어쓰지 않는다', () async {
+      final answer = Completer<String?>();
+      final links = auto((_, _) => answer.future);
+      await links.load(isKo: true);
+      await links.addFromText('instagram.com/p/DdK3PpFmpRJ/', isKo: true);
+      await pumpEventQueue();
+      await links.addCategory('카페');
+      await links.moveTo(links.allLinks.single, '카페');
+
+      answer.complete('맛집');
+      await pumpEventQueue();
+      expect(links.allLinks.single.category, '카페');
+    });
+
+    test('다시 찾기로는 옮기지 않는다', () async {
+      var calls = 0;
+      final links = auto((_, _) async {
+        calls++;
+        return null;
+      });
+      await links.load(isKo: true);
+      await links.addFromText('instagram.com/p/DdK3PpFmpRJ/', isKo: true);
+      await pumpEventQueue();
+      await links.retry(links.allLinks.single);
+      await pumpEventQueue();
+      expect(calls, 1);
+    });
+  });
+
   test('붙여넣은 글에서 게시물·릴스 링크만 뽑아 지금 카테고리에 저장하고 장소를 찾는다', () async {
     final links = controller();
     await links.load(isKo: true);
@@ -157,36 +233,38 @@ https://www.instagram.com/seoul__guide/
   });
 
   test('위치 태그는 이름과 좌표가 다 있을 때만 읽는다', () {
-    final tagged = MediaParser.parsePost({
-      'pk': '1',
-      'code': 'DQ9OPFqCar4',
-      'media_type': 1,
-      'image_versions2': {
-        'candidates': [
-          {'url': 'https://cdn/a.jpg', 'width': 1080, 'height': 1350},
-        ],
-      },
-      'location': {
-        'name': '용산공원',
-        'lat': 37.521433,
-        'lng': 126.989062,
-        'address': '용산구 서빙고로 221',
-      },
-    })!;
+    final tagged =
+        MediaParser.parsePost({
+          'pk': '1',
+          'code': 'DQ9OPFqCar4',
+          'media_type': 1,
+          'image_versions2': {
+            'candidates': [
+              {'url': 'https://cdn/a.jpg', 'width': 1080, 'height': 1350},
+            ],
+          },
+          'location': {
+            'name': '용산공원',
+            'lat': 37.521433,
+            'lng': 126.989062,
+            'address': '용산구 서빙고로 221',
+          },
+        })!;
     expect(tagged.location?.name, '용산공원');
     expect(tagged.location?.lat, 37.521433);
     expect(tagged.location?.address, '용산구 서빙고로 221');
 
-    final nameOnly = MediaParser.parsePost({
-      'pk': '2',
-      'media_type': 1,
-      'image_versions2': {
-        'candidates': [
-          {'url': 'https://cdn/a.jpg', 'width': 1080, 'height': 1350},
-        ],
-      },
-      'location': {'name': '어딘가'},
-    })!;
+    final nameOnly =
+        MediaParser.parsePost({
+          'pk': '2',
+          'media_type': 1,
+          'image_versions2': {
+            'candidates': [
+              {'url': 'https://cdn/a.jpg', 'width': 1080, 'height': 1350},
+            ],
+          },
+          'location': {'name': '어딘가'},
+        })!;
     expect(nameOnly.location, isNull);
   });
 
@@ -208,12 +286,13 @@ https://www.instagram.com/seoul__guide/
             create: (_) => DownloadService(settings: _FakeSettingsStore()),
           ),
           ChangeNotifierProvider(
-            create: (_) => AccountController(
-              client: MapsClient(),
-              links: links,
-              readSession: () async => null,
-              writeSession: (_) async => true,
-            ),
+            create:
+                (_) => AccountController(
+                  client: MapsClient(),
+                  links: links,
+                  readSession: () async => null,
+                  writeSession: (_) async => true,
+                ),
           ),
         ],
         child: const MaterialApp(home: LinksScreen()),
@@ -396,8 +475,9 @@ https://www.instagram.com/seoul__guide/
     bool? requestedKo;
     final links = LinksController(
       store: store,
-      resolve: (IgLink link) async =>
-          ResolveResult(title: '', posts: [_post(link.code!)]),
+      resolve:
+          (IgLink link) async =>
+              ResolveResult(title: '', posts: [_post(link.code!)]),
       analyze: (post, {required isKo}) async => [_place],
       title: (link, {required isKo}) async {
         requestedKo = isKo;
@@ -435,12 +515,13 @@ https://www.instagram.com/seoul__guide/
             create: (_) => DownloadService(settings: _FakeSettingsStore()),
           ),
           ChangeNotifierProvider(
-            create: (_) => AccountController(
-              client: MapsClient(),
-              links: links,
-              readSession: () async => null,
-              writeSession: (_) async => true,
-            ),
+            create:
+                (_) => AccountController(
+                  client: MapsClient(),
+                  links: links,
+                  readSession: () async => null,
+                  writeSession: (_) async => true,
+                ),
           ),
         ],
         child: MaterialApp(
@@ -490,12 +571,13 @@ https://www.instagram.com/seoul__guide/
             create: (_) => DownloadService(settings: _FakeSettingsStore()),
           ),
           ChangeNotifierProvider(
-            create: (_) => AccountController(
-              client: MapsClient(),
-              links: links,
-              readSession: () async => null,
-              writeSession: (_) async => true,
-            ),
+            create:
+                (_) => AccountController(
+                  client: MapsClient(),
+                  links: links,
+                  readSession: () async => null,
+                  writeSession: (_) async => true,
+                ),
           ),
         ],
         child: const MaterialApp(home: LinksScreen()),
@@ -566,6 +648,12 @@ https://www.instagram.com/seoul__guide/
 class _FakeSettingsStore extends SettingsStore {
   @override
   Future<String?> readLanguage() async => null;
+
+  @override
+  Future<bool> readDarkTheme() async => false;
+
+  @override
+  Future<bool> writeDarkTheme(bool value) async => true;
 
   @override
   Future<String?> readSummaryVotes() async => null;

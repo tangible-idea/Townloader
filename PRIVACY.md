@@ -1,6 +1,6 @@
 # Townloader Privacy Policy
 
-Effective date: October 31, 2026
+Effective date: November 2, 2026
 
 Townloader ("the app") does not collect personal information. This document explains
 what information the app handles and where.
@@ -73,6 +73,10 @@ Links tab.
 found, and a few large text lines read from its first photo are sent through the developer's
 server on Cloudflare Workers to Anthropic (Claude). The photos themselves are not sent. Only the
 finished title is kept, for 30 days, so the same post isn't titled again.
+
+**Automatic categories.** When you save a post in the Links tab, its caption and title and your
+category names are sent through the developer's server on Cloudflare Workers to TypeSafe (Jev) to
+pick a matching category. The server does not keep this text.
 
 Tapping "Delete account" in Settings immediately removes your account, synced links and shared
 maps from the server, and the links you sent stop working. Links saved on your device stay.

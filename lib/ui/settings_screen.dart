@@ -34,6 +34,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 _sectionTitle(context, s.accountSection),
                 const AccountCard(),
                 const SizedBox(height: 16),
+                _sectionTitle(context, s.appearanceSection),
+                Card(
+                  child: SwitchListTile(
+                    value: settings.darkTheme,
+                    onChanged: settings.setDarkTheme,
+                    secondary: const Icon(Icons.dark_mode_outlined),
+                    title: Text(s.darkTheme),
+                  ),
+                ),
+                const SizedBox(height: 16),
                 _sectionTitle(context, s.languageSection),
                 Card(
                   child: RadioGroup<String?>(

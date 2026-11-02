@@ -22,6 +22,7 @@ import { renderMapPage, renderNotFoundPage } from "./page";
  *
  * 공개
  *   GET /m/<id>        웹 지도. 앱이 깔려 있으면 Universal Link · App Link 로 앱이 연다.
+ *   GET /w/<id>        같은 웹 지도. 앱 링크에 걸리지 않아 앱이 있어도 브라우저에서 열린다.
  *   GET /m/<id>.json   앱이 그리는 공개 데이터. 글(사진·해시태그를 뺀 캡션)과 장소를 담는다.
  *   GET /.well-known/apple-app-site-association, /.well-known/assetlinks.json
  */
@@ -85,7 +86,9 @@ async function route(request: Request, env: Env): Promise<Response> {
     return json(assetLinks(env));
   }
 
-  const share = /^\/m\/([A-Za-z0-9]{6,32})(\.json)?$/.exec(path);
+  const share =
+    /^\/m\/([A-Za-z0-9]{6,32})(\.json)?$/.exec(path) ??
+    /^\/w\/([A-Za-z0-9]{6,32})$/.exec(path);
   if (method === "GET" && share) {
     const map = await publicMap(env, share[1]);
     if (share[2]) {
@@ -94,7 +97,7 @@ async function route(request: Request, env: Env): Promise<Response> {
     const stores = { appStore: env.APP_STORE_URL, playStore: env.PLAY_STORE_URL };
     return html(
       map
-        ? renderMapPage(map, url.href, stores, env.MAPBOX_TOKEN ?? "")
+        ? renderMapPage(map, `${url.origin}/m/${share[1]}`, stores, env.MAPBOX_TOKEN ?? "")
         : renderNotFoundPage(stores),
       map ? 200 : 404,
     );

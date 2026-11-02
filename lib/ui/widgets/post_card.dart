@@ -219,12 +219,13 @@ class PostCard extends StatelessWidget {
     final best = item.best;
     final width = best?.width;
     final height = best?.height;
-    final ratio = width != null && height != null && width > 0 && height > 0
-        ? (width / height).clamp(
-            item.isVideo ? _tallestVideoRatio : _tallestPhotoRatio,
-            _widestRatio,
-          )
-        : 4 / 3;
+    final ratio =
+        width != null && height != null && width > 0 && height > 0
+            ? (width / height).clamp(
+              item.isVideo ? _tallestVideoRatio : _tallestPhotoRatio,
+              _widestRatio,
+            )
+            : 4 / 3;
 
     // 넓은 화면에서 세로 영상이 끝없이 길어지지 않도록 화면 높이의 70% 로 막는다.
     return Center(
@@ -240,7 +241,9 @@ class PostCard extends StatelessWidget {
               if (item.isVideo)
                 InlineVideo(item: item)
               else
-                NetworkThumb(url: item.thumbnailUrl ?? best?.url),
+                NetworkThumb(
+                  url: item.thumbnailUrl ?? (item.isVideo ? null : best?.url),
+                ),
               if (item.isVideo &&
                   item.durationSeconds != null &&
                   item.durationSeconds! > 0)

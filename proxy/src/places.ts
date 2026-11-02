@@ -293,7 +293,7 @@ async function classifyLines(
   return lines.map((_, i) => answers[`l${i}`]?.probabilities ?? {});
 }
 
-async function jev(
+export async function jev(
   env: PlacesEnv,
   state: unknown,
   questions: Record<string, unknown>,

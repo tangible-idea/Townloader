@@ -54,6 +54,9 @@ class MapShare {
   final String id;
   final String category;
   final String url;
+
+  /// 앱 링크에 걸리지 않는 웹 지도 주소. [url] 은 앱이 깔려 있으면 앱으로 돌아온다.
+  String get browserUrl => url.replaceFirst('/m/$id', '/w/$id');
 }
 
 /// 공유 링크로 받은 지도. 장소와 원문 링크만 있다.
@@ -89,13 +92,13 @@ class PublicMap {
       if (raw is! Map<String, dynamic>) continue;
       final url = raw['url'] as String? ?? '';
       final postIndex = raw['post'];
-      final owner = postIndex is int && postIndex < posts.length
-          ? posts[postIndex]
-          : byUrl[url];
+      final owner =
+          postIndex is int && postIndex < posts.length
+              ? posts[postIndex]
+              : byUrl[url];
       final photo = raw['photo'] as String?;
-      final imageIndex = owner == null || photo == null
-          ? -1
-          : owner.imageUrls.indexOf(photo);
+      final imageIndex =
+          owner == null || photo == null ? -1 : owner.imageUrls.indexOf(photo);
       final place = SavedPlace(
         name: raw['name'] as String? ?? '',
         lat: (raw['lat'] as num).toDouble(),
@@ -113,17 +116,18 @@ class PublicMap {
       );
       final key = owner?.url ?? url;
       final link = byUrl[key];
-      byUrl[key] = link == null
-          ? SavedLink(
-              code: url,
-              url: url,
-              category: category,
-              savedAt: DateTime.fromMillisecondsSinceEpoch(0),
-              status: LinkStatus.ready,
-              author: raw['author'] as String?,
-              places: [place],
-            )
-          : link.copyWith(places: [...link.places, place]);
+      byUrl[key] =
+          link == null
+              ? SavedLink(
+                code: url,
+                url: url,
+                category: category,
+                savedAt: DateTime.fromMillisecondsSinceEpoch(0),
+                status: LinkStatus.ready,
+                author: raw['author'] as String?,
+                places: [place],
+              )
+              : link.copyWith(places: [...link.places, place]);
     }
     return PublicMap(category: category, links: byUrl.values.toList());
   }

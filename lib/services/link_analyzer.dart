@@ -36,7 +36,7 @@ class LinkAnalyzer {
   /// [post] 의 사진 순서대로 쓸 썸네일 주소. [SavedPlace.imageIndex] 가 이 순번이다.
   static List<String> imageUrlsOf(IgPost post) => [
     for (final item in post.items.take(maxImages))
-      item.thumbnailUrl ?? item.best?.url ?? '',
+      item.thumbnailUrl ?? (item.isVideo ? null : item.best?.url) ?? '',
   ];
 
   Future<List<SavedPlace>> analyze(IgPost post, {required bool isKo}) async {
@@ -124,6 +124,14 @@ class LinkAnalyzer {
       lines: lines,
     );
   }
+
+  /// 글의 제목과 본문만 읽어 [categories] 중 맞는 곳을 고른다. 뚜렷하지 않으면 null.
+  Future<String?> category(SavedLink link, List<String> categories) =>
+      _places.category(
+        categories: categories,
+        title: link.title,
+        caption: link.caption,
+      );
 
   /// 사진 한 장의 글자 줄. 받지 못하거나 읽지 못하면 빈 목록이다.
   Future<List<OcrLine>> _readImage(String url) async {

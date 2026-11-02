@@ -100,6 +100,7 @@ class _TownloaderAppState extends State<TownloaderApp> {
           debugShowCheckedModeBanner: false,
           theme: AppTheme.light(),
           darkTheme: AppTheme.dark(),
+          themeMode: settings.themeMode,
           locale: settings.locale,
           localizationsDelegates: const [
             GlobalMaterialLocalizations.delegate,

@@ -18,6 +18,7 @@ import 'places_map_screen.dart';
 import 'widgets/drop_targets.dart';
 import 'widgets/network_thumb.dart';
 import 'widgets/place_category_icon.dart';
+import 'widgets/shimmer.dart';
 import 'widgets/state_views.dart';
 
 /// 링크를 붙여넣어 카테고리별로 모으고, 글마다 찾은 장소를 보여 준다.
@@ -47,8 +48,43 @@ class LinksScreenState extends State<LinksScreen>
   /// 장소 목록을 펼친 링크. 카드가 화면 밖으로 나갔다 돌아와도 펼친 채로 두려고 여기서 들고 있다.
   final _expandedPlaces = <String>{};
 
+  late final LinksController _linksController = context.read<LinksController>();
+
+  @override
+  void initState() {
+    super.initState();
+    _linksController.autoMoved.addListener(_showAutoMoved);
+  }
+
+  /// 보던 카테고리에서 글이 사라지므로 어디로 갔는지 알리고 되돌릴 수 있게 한다.
+  void _showAutoMoved() {
+    final moved = _linksController.autoMoved.value;
+    if (moved == null || !mounted) return;
+    final s = S.of(context);
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(s.linksMovedTo(moved.to)),
+          behavior: SnackBarBehavior.floating,
+          action: SnackBarAction(
+            label: s.undo,
+            onPressed: () {
+              for (final link in _linksController.allLinks) {
+                if (link.code == moved.code) {
+                  _linksController.moveTo(link, moved.from);
+                  break;
+                }
+              }
+            },
+          ),
+        ),
+      );
+  }
+
   @override
   void dispose() {
+    _linksController.autoMoved.removeListener(_showAutoMoved);
     _dragMode.dispose();
     _input.dispose();
     super.dispose();
@@ -86,12 +122,13 @@ class LinksScreenState extends State<LinksScreen>
     FocusScope.of(context).unfocus();
 
     final skipped = s.linksSkipped(result.duplicates, result.unsupported);
-    final message = result.added > 0
-        ? [
-            s.linksSaved(result.added, category),
-            if (skipped.isNotEmpty) skipped,
-          ].join(' · ')
-        : (skipped.isNotEmpty ? skipped : s.linksNoneFound);
+    final message =
+        result.added > 0
+            ? [
+              s.linksSaved(result.added, category),
+              if (skipped.isNotEmpty) skipped,
+            ].join(' · ')
+            : (skipped.isNotEmpty ? skipped : s.linksNoneFound);
     if (result.added > 0) {
       _input.clear();
       setState(() {});
@@ -116,94 +153,107 @@ class LinksScreenState extends State<LinksScreen>
     final account = context.read<AccountController>();
     final messenger = ScaffoldMessenger.of(context);
     final box = context.findRenderObject() as RenderBox?;
-    final origin = box == null
-        ? null
-        : box.localToGlobal(Offset.zero) & box.size;
+    final origin =
+        box == null ? null : box.localToGlobal(Offset.zero) & box.size;
 
-    void show(String message) => messenger
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
-      );
+    void show(String message) =>
+        messenger
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            SnackBar(
+              content: Text(message),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
 
     if (!account.isSignedIn) {
       show(s.shareMapNeedsSignIn);
       return;
     }
 
-    final existing = account.shareOf(shareKey);
-    if (existing != null) {
-      final action = await showModalBottomSheet<String>(
+    var existing = account.shareOf(shareKey);
+    if (existing == null) {
+      if (!context.mounted) return;
+      final agreed = await showDialog<bool>(
         context: context,
-        showDragHandle: true,
-        builder: (context) => SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.link),
-                title: Text('$displayTitle · ${s.sharePublicLabel}'),
-                subtitle: Text(existing.url),
-              ),
-              ListTile(
-                leading: const Icon(Icons.open_in_browser),
-                title: Text(s.shareOpenInBrowser),
-                onTap: () => Navigator.of(context).pop('open'),
-              ),
-              ListTile(
-                leading: const Icon(Icons.ios_share),
-                title: Text(s.shareLinkAgain),
-                onTap: () => Navigator.of(context).pop('send'),
-              ),
-              ListTile(
-                leading: const Icon(Icons.lock_outline),
-                title: Text(s.shareStop),
-                onTap: () => Navigator.of(context).pop('stop'),
-              ),
-            ],
-          ),
-        ),
+        builder:
+            (context) => AlertDialog(
+              title: Text(s.shareMapTitle(displayTitle)),
+              content: Text(isPost ? s.sharePostBody : s.shareMapBody),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: Text(s.cancel),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  child: Text(s.shareMapAction),
+                ),
+              ],
+            ),
       );
+      if (agreed != true) return;
       try {
-        if (action == 'open') {
-          await launchUrl(
-            Uri.parse(existing.url),
-            mode: LaunchMode.externalApplication,
-          );
-        } else if (action == 'send') {
-          await _sendShareLink(existing, origin, subject: displayTitle);
-        } else if (action == 'stop') {
-          await account.unshare(shareKey);
-          show(s.shareStopped);
-        }
+        existing = await account.share(shareKey);
       } on MapsException catch (error) {
         show(error.message);
+        return;
       }
-      return;
     }
-
+    final share = existing;
     if (!context.mounted) return;
-    final agreed = await showDialog<bool>(
+    final action = await showModalBottomSheet<String>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(s.shareMapTitle(displayTitle)),
-        content: Text(isPost ? s.sharePostBody : s.shareMapBody),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: Text(s.cancel),
+      showDragHandle: true,
+      builder:
+          (context) => SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.link),
+                  title: Text('$displayTitle · ${s.sharePublicLabel}'),
+                  subtitle: Text(share.url),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.copy),
+                  title: Text(s.copyLink),
+                  onTap: () => Navigator.of(context).pop('copy'),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.open_in_browser),
+                  title: Text(s.shareOpenInBrowser),
+                  onTap: () => Navigator.of(context).pop('open'),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.ios_share),
+                  title: Text(s.shareLinkAgain),
+                  onTap: () => Navigator.of(context).pop('send'),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.lock_outline),
+                  title: Text(s.shareStop),
+                  onTap: () => Navigator.of(context).pop('stop'),
+                ),
+              ],
+            ),
           ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: Text(s.shareMapAction),
-          ),
-        ],
-      ),
     );
-    if (agreed != true) return;
     try {
-      final share = await account.share(shareKey);
-      await _sendShareLink(share, origin, subject: displayTitle);
+      if (action == 'copy') {
+        await Clipboard.setData(ClipboardData(text: share.url));
+        show(s.linkCopied);
+      } else if (action == 'open') {
+        await launchUrl(
+          Uri.parse(share.browserUrl),
+          mode: LaunchMode.externalApplication,
+        );
+      } else if (action == 'send') {
+        await _sendShareLink(share, origin, subject: displayTitle);
+      } else if (action == 'stop') {
+        await account.unshare(shareKey);
+        show(s.shareStopped);
+      }
     } on MapsException catch (error) {
       show(error.message);
     }
@@ -226,25 +276,26 @@ class LinksScreenState extends State<LinksScreen>
     final controller = TextEditingController();
     final name = await showDialog<String>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(s.linksNewCategory),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: InputDecoration(hintText: s.linksCategoryHint),
-          onSubmitted: (value) => Navigator.of(context).pop(value),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: Text(s.cancel),
+      builder:
+          (context) => AlertDialog(
+            title: Text(s.linksNewCategory),
+            content: TextField(
+              controller: controller,
+              autofocus: true,
+              decoration: InputDecoration(hintText: s.linksCategoryHint),
+              onSubmitted: (value) => Navigator.of(context).pop(value),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: Text(s.cancel),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(controller.text),
+                child: Text(s.linksAdd),
+              ),
+            ],
           ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(controller.text),
-            child: Text(s.linksAdd),
-          ),
-        ],
-      ),
     );
     controller.dispose();
     if (name != null && mounted) {
@@ -268,23 +319,27 @@ class LinksScreenState extends State<LinksScreen>
         title: Text(s.linksTitle),
         actions: [
           Builder(
-            builder: (context) => IconButton(
-              tooltip: s.shareMap,
-              icon: const Icon(Icons.ios_share),
-              onPressed: controller.selectedCategory == null
-                  ? null
-                  : () => _shareMap(context, controller.selectedCategory!),
-            ),
+            builder:
+                (context) => IconButton(
+                  tooltip: s.shareMap,
+                  icon: const Icon(Icons.ios_share),
+                  onPressed:
+                      controller.selectedCategory == null
+                          ? null
+                          : () =>
+                              _shareMap(context, controller.selectedCategory!),
+                ),
           ),
           IconButton(
             tooltip: s.mapOpen,
             icon: const Icon(Icons.public),
-            onPressed: hasPlaces
-                ? () => PlacesMapScreen.open(
-                    context,
-                    category: controller.selectedCategory,
-                  )
-                : null,
+            onPressed:
+                hasPlaces
+                    ? () => PlacesMapScreen.open(
+                      context,
+                      category: controller.selectedCategory,
+                    )
+                    : null,
           ),
           IconButton(
             tooltip: s.downloadHistory,
@@ -351,20 +406,24 @@ class LinksScreenState extends State<LinksScreen>
                   child: _LinkCard(
                     link: item,
                     placesExpanded: _expandedPlaces.contains(item.code),
-                    onTogglePlaces: () => setState(() {
-                      if (!_expandedPlaces.remove(item.code)) {
-                        _expandedPlaces.add(item.code);
-                      }
-                    }),
+                    onTogglePlaces:
+                        () => setState(() {
+                          if (!_expandedPlaces.remove(item.code)) {
+                            _expandedPlaces.add(item.code);
+                          }
+                        }),
                     onRead: () => _openInRead(item.url),
-                    onShare: (buttonContext) => _shareMap(
-                      buttonContext,
-                      AccountController.postShareKey(item.code),
-                      label:
-                          item.title ??
-                          (item.author == null ? item.code : '@${item.author}'),
-                      isPost: true,
-                    ),
+                    onShare:
+                        (buttonContext) => _shareMap(
+                          buttonContext,
+                          AccountController.postShareKey(item.code),
+                          label:
+                              item.title ??
+                              (item.author == null
+                                  ? item.code
+                                  : '@${item.author}'),
+                          isPost: true,
+                        ),
                   ),
                 );
                 return _draggable(context, item, card);
@@ -406,11 +465,12 @@ class LinksScreenState extends State<LinksScreen>
     if (mounted) setState(() => _dragging = null);
   }
 
-  void _toast(String message) => ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(
-      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
-    );
+  void _toast(String message) =>
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
+        );
 
   List<Widget> _dropTargets(BuildContext context, LinksController controller) {
     final s = S.of(context);
@@ -487,9 +547,10 @@ class LinksScreenState extends State<LinksScreen>
             for (final category in controller.categories) ...[
               ChoiceChip(
                 // 공유해서 public 이 된 카테고리는 링크 아이콘으로 알린다.
-                avatar: shared.contains(category)
-                    ? const Icon(Icons.link, size: 16)
-                    : null,
+                avatar:
+                    shared.contains(category)
+                        ? const Icon(Icons.link, size: 16)
+                        : null,
                 label: Text('$category ${controller.countIn(category)}'),
                 selected: category == controller.selectedCategory,
                 onSelected: (_) => controller.selectCategory(category),
@@ -577,9 +638,8 @@ class _LinkCard extends StatelessWidget {
       margin: EdgeInsets.zero,
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: canOpenMap
-            ? () => PlacesMapScreen.open(context, link: link)
-            : null,
+        onTap:
+            canOpenMap ? () => PlacesMapScreen.open(context, link: link) : null,
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Column(
@@ -637,29 +697,35 @@ class _LinkCard extends StatelessWidget {
                   Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      _menu(context, sharedUrl: share?.url),
+                      _menu(context, share: share),
                       const SizedBox(height: 4),
                       Builder(
-                        builder: (buttonContext) => IconButton(
-                          tooltip: s.shareMap,
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints.tightFor(
-                            width: 32,
-                            height: 32,
-                          ),
-                          icon: Icon(
-                            isShared ? Icons.link : Icons.ios_share,
-                            size: 20,
-                            color: isShared ? theme.colorScheme.primary : null,
-                          ),
-                          onPressed: () => onShare(buttonContext),
-                        ),
+                        builder:
+                            (buttonContext) => IconButton(
+                              tooltip: s.shareMap,
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints.tightFor(
+                                width: 32,
+                                height: 32,
+                              ),
+                              icon: Icon(
+                                isShared ? Icons.link : Icons.ios_share,
+                                size: 20,
+                                color:
+                                    isShared ? theme.colorScheme.primary : null,
+                              ),
+                              onPressed: () => onShare(buttonContext),
+                            ),
                       ),
                     ],
                   ),
                 ],
               ),
-              if (link.places.isNotEmpty) ...[
+              if (link.places.isEmpty &&
+                  link.status == LinkStatus.analyzing) ...[
+                const SizedBox(height: 10),
+                const PlaceChipsSkeleton(),
+              ] else if (link.places.isNotEmpty) ...[
                 const SizedBox(height: 10),
                 _PlaceChips(
                   link: link,
@@ -682,26 +748,17 @@ class _LinkCard extends StatelessWidget {
       color: theme.colorScheme.onSurfaceVariant,
     );
     return switch (link.status) {
-      LinkStatus.analyzing => Row(
-        children: [
-          const SizedBox(
-            width: 14,
-            height: 14,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          ),
-          const SizedBox(width: 8),
-          Text(s.linksAnalyzing, style: muted),
-        ],
-      ),
+      LinkStatus.analyzing => Text(s.linksAnalyzing(link.code), style: muted),
       LinkStatus.ready => Text(
         link.places.isEmpty
             ? s.linksNoPlaces
             : s.linksPlaceCount(link.places.length),
-        style: link.places.isEmpty
-            ? muted
-            : theme.textTheme.labelLarge?.copyWith(
-                color: theme.colorScheme.primary,
-              ),
+        style:
+            link.places.isEmpty
+                ? muted
+                : theme.textTheme.labelLarge?.copyWith(
+                  color: theme.colorScheme.primary,
+                ),
       ),
       LinkStatus.failed => Row(
         children: [
@@ -722,7 +779,7 @@ class _LinkCard extends StatelessWidget {
     };
   }
 
-  Widget _menu(BuildContext context, {String? sharedUrl}) {
+  Widget _menu(BuildContext context, {MapShare? share}) {
     final s = S.of(context);
     final controller = context.read<LinksController>();
     final others = [
@@ -742,10 +799,22 @@ class _LinkCard extends StatelessWidget {
         switch (value) {
           case '_read':
             onRead?.call();
+          case '_copy_shared':
+            if (share != null) {
+              Clipboard.setData(ClipboardData(text: share.url));
+              ScaffoldMessenger.of(context)
+                ..hideCurrentSnackBar()
+                ..showSnackBar(
+                  SnackBar(
+                    content: Text(s.linkCopied),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+            }
           case '_open_shared':
-            if (sharedUrl != null) {
+            if (share != null) {
               launchUrl(
-                Uri.parse(sharedUrl),
+                Uri.parse(share.browserUrl),
                 mode: LaunchMode.externalApplication,
               );
             }
@@ -762,24 +831,27 @@ class _LinkCard extends StatelessWidget {
             controller.moveTo(link, value);
         }
       },
-      itemBuilder: (context) => [
-        if (onRead != null)
-          PopupMenuItem(value: '_read', child: Text(s.navDownload)),
-        if (sharedUrl != null)
-          PopupMenuItem(
-            value: '_open_shared',
-            child: Text(s.shareOpenInBrowser),
-          ),
-        PopupMenuItem(value: '_open', child: Text(s.openOriginal)),
-        if (link.status != LinkStatus.analyzing)
-          PopupMenuItem(value: '_retry', child: Text(s.linksRetry)),
-        for (final category in others)
-          PopupMenuItem(
-            value: category,
-            child: Text('${s.linksMove}: $category'),
-          ),
-        PopupMenuItem(value: '_delete', child: Text(s.linksDelete)),
-      ],
+      itemBuilder:
+          (context) => [
+            if (onRead != null)
+              PopupMenuItem(value: '_read', child: Text(s.navDownload)),
+            if (share != null)
+              PopupMenuItem(value: '_copy_shared', child: Text(s.copyLink)),
+            if (share != null)
+              PopupMenuItem(
+                value: '_open_shared',
+                child: Text(s.shareOpenInBrowser),
+              ),
+            PopupMenuItem(value: '_open', child: Text(s.openOriginal)),
+            if (link.status != LinkStatus.analyzing)
+              PopupMenuItem(value: '_retry', child: Text(s.linksRetry)),
+            for (final category in others)
+              PopupMenuItem(
+                value: category,
+                child: Text('${s.linksMove}: $category'),
+              ),
+            PopupMenuItem(value: '_delete', child: Text(s.linksDelete)),
+          ],
     );
   }
 }
@@ -806,9 +878,8 @@ class _PlaceChips extends StatelessWidget {
     final theme = Theme.of(context);
     final places = link.places;
     final hidden = places.length - _collapsedCount;
-    final visible = expanded || hidden <= 0
-        ? places
-        : places.take(_collapsedCount);
+    final visible =
+        expanded || hidden <= 0 ? places : places.take(_collapsedCount);
     return Wrap(
       spacing: 6,
       runSpacing: 6,
@@ -816,9 +887,11 @@ class _PlaceChips extends StatelessWidget {
         for (final place in visible)
           _PlaceChip(
             place: place,
-            onTap: canOpenMap
-                ? () => PlacesMapScreen.open(context, link: link, place: place)
-                : null,
+            onTap:
+                canOpenMap
+                    ? () =>
+                        PlacesMapScreen.open(context, link: link, place: place)
+                    : null,
           ),
         if (hidden > 0)
           Material(
@@ -1024,16 +1097,14 @@ class _SwipeActionCardState extends State<_SwipeActionCard> {
           if (_offset != 0)
             Positioned.fill(
               child: Align(
-                alignment: alignLeft
-                    ? Alignment.centerLeft
-                    : Alignment.centerRight,
+                alignment:
+                    alignLeft ? Alignment.centerLeft : Alignment.centerRight,
                 child: actions,
               ),
             ),
           AnimatedContainer(
-            duration: _dragging
-                ? Duration.zero
-                : const Duration(milliseconds: 180),
+            duration:
+                _dragging ? Duration.zero : const Duration(milliseconds: 180),
             curve: Curves.easeOutCubic,
             transform: Matrix4.translationValues(_offset, 0, 0),
             child: GestureDetector(

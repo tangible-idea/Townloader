@@ -19,6 +19,9 @@ class ImageDiskCache {
   /// 폴더가 이 크기를 넘으면 앱을 켤 때 오래된 파일부터 지운다.
   static const _maxBytes = 300 * 1024 * 1024;
 
+  /// 응답이나 다음 조각이 이만큼 안 오면 끊는다. 멈춘 연결이 썸네일을 계속 붙잡지 않게 한다.
+  static const _stallTimeout = Duration(seconds: 15);
+
   final _client = http.Client();
   final _inFlight = <String, Future<File>>{};
   Future<Directory>? _directory;
@@ -41,11 +44,15 @@ class ImageDiskCache {
   }) async {
     final file = await _fileOf(url);
     if (await file.exists()) return file;
-    return _inFlight[url] ??= _download(
+    return _inFlight[url] ??= _downloadWithRetry(
       url,
       file,
       onProgress,
-    ).whenComplete(() => _inFlight.remove(url));
+    ).whenComplete(() {
+      // remove 가 돌려주는 값은 이 Future 자신이다. 화살표로 돌려주면 whenComplete 가
+      // 자기 자신을 기다려 영원히 끝나지 않는다.
+      _inFlight.remove(url);
+    });
   }
 
   /// 디코딩에 실패한 파일(HTML 오류 페이지 등)을 지워 다음에 다시 받게 한다.
@@ -58,13 +65,31 @@ class ImageDiskCache {
   Future<File> _fileOf(String url) async =>
       File('${(await _dir).path}/${_hash(url)}');
 
+  /// 끊긴 연결은 한 번 다시 받는다. 만료(403) 같은 응답은 다시 받아도 같다.
+  Future<File> _downloadWithRetry(
+    String url,
+    File file,
+    void Function(int received, int? total)? onProgress,
+  ) async {
+    try {
+      return await _download(url, file, onProgress);
+    } on NetworkImageLoadException {
+      rethrow;
+    } catch (_) {
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      return _download(url, file, onProgress);
+    }
+  }
+
   Future<File> _download(
     String url,
     File file,
     void Function(int received, int? total)? onProgress,
   ) async {
     final uri = Uri.parse(url);
-    final response = await _client.send(http.Request('GET', uri));
+    final response = await _client
+        .send(http.Request('GET', uri))
+        .timeout(_stallTimeout);
     if (response.statusCode != HttpStatus.ok) {
       unawaited(response.stream.drain<void>());
       throw NetworkImageLoadException(
@@ -76,7 +101,7 @@ class ImageDiskCache {
     final sink = temp.openWrite();
     var received = 0;
     try {
-      await for (final chunk in response.stream) {
+      await for (final chunk in response.stream.timeout(_stallTimeout)) {
         sink.add(chunk);
         received += chunk.length;
         onProgress?.call(received, response.contentLength);
@@ -157,9 +182,8 @@ class DiskCachedImage extends ImageProvider<DiskCachedImage> {
       chunkEvents: chunks.stream,
       scale: 1.0,
       debugLabel: url,
-      informationCollector: () => [
-        DiagnosticsProperty<ImageProvider>('Image provider', this),
-      ],
+      informationCollector:
+          () => [DiagnosticsProperty<ImageProvider>('Image provider', this)],
     );
   }
 
@@ -170,12 +194,13 @@ class DiskCachedImage extends ImageProvider<DiskCachedImage> {
     try {
       final file = await ImageDiskCache.instance.fileFor(
         url,
-        onProgress: (received, total) => chunks.add(
-          ImageChunkEvent(
-            cumulativeBytesLoaded: received,
-            expectedTotalBytes: total,
-          ),
-        ),
+        onProgress:
+            (received, total) => chunks.add(
+              ImageChunkEvent(
+                cumulativeBytesLoaded: received,
+                expectedTotalBytes: total,
+              ),
+            ),
       );
       final buffer = await ui.ImmutableBuffer.fromUint8List(
         await file.readAsBytes(),
