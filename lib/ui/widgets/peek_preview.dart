@@ -5,6 +5,7 @@ import 'package:video_player/video_player.dart';
 
 import '../../models/ig_post.dart';
 import 'network_thumb.dart';
+import 'shimmer.dart';
 
 /// 길게 누르는 동안만 글의 미디어를 크게 띄운다. 손을 떼면 바로 닫힌다.
 ///
@@ -225,17 +226,8 @@ class _PeekMediaState extends State<_PeekMedia> {
           fit: BoxFit.contain,
           icon: item.isVideo ? Icons.movie_outlined : Icons.image_outlined,
         ),
-        if (video != null)
-          const Center(
-            child: SizedBox(
-              width: 28,
-              height: 28,
-              child: CircularProgressIndicator(
-                strokeWidth: 2.5,
-                color: Colors.white,
-              ),
-            ),
-          ),
+        // 동영상을 준비하는 동안 썸네일 위로 쉬머가 지나간다.
+        if (video != null) const ShimmerBox(overlay: true),
       ],
     );
 

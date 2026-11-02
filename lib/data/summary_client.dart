@@ -7,24 +7,16 @@ import '../config/app_config.dart';
 import '../models/threads_thread.dart';
 import '../services/usage_meter.dart';
 
-/// 요약을 만드는 AI 공급자. 키는 프록시에만 있다.
-enum SummaryProvider {
-  claude('Anthropic (Claude)'),
-  poe('Poe');
+/// 요약을 만드는 AI. 동의 안내에 보여 줄 이름이고, 키는 프록시에만 있다.
+const summaryProviderLabel = 'Anthropic (Claude)';
 
-  const SummaryProvider(this.label);
+/// 스레드 요약 결과. [summary] 는 본문 요약(5줄 이하, 줄마다 한 문장),
+/// [comments] 는 댓글 요점(없으면 빈 목록).
+class ThreadDigest {
+  const ThreadDigest({required this.summary, required this.comments});
 
-  /// 동의 안내에 보여 줄 서비스 이름.
-  final String label;
-}
-
-/// 무엇을 요약할지.
-enum SummaryKind {
-  /// 작성자의 글을 중심으로 스레드 전체를.
-  thread,
-
-  /// 댓글만. 작성자의 글은 댓글이 무엇에 대한 것인지 알려 주는 데만 쓴다.
-  comments,
+  final List<String> summary;
+  final List<String> comments;
 }
 
 class SummaryException implements Exception {
@@ -47,16 +39,13 @@ class SummaryClient {
 
   static const Duration timeout = Duration(seconds: 60);
 
-  Future<String> summarize(
+  Future<ThreadDigest> summarize(
     ThreadsThread thread, {
-    required SummaryProvider provider,
     required bool isKo,
-    SummaryKind kind = SummaryKind.thread,
   }) async {
     final root = thread.root;
     final body = {
-      'provider': provider.name,
-      'kind': kind.name,
+      'kind': 'digest',
       'id': '${root.source.name}-${root.code ?? root.pk}',
       'lang': isKo ? 'ko' : 'en',
       'posts': [
@@ -89,9 +78,18 @@ class SummaryClient {
     if (response.statusCode == 429) throw SummaryException(rateLimited: true);
     if (response.statusCode != 200) throw SummaryException();
     final data = jsonDecode(utf8.decode(response.bodyBytes));
-    final summary = data is Map ? data['summary'] : null;
-    if (summary is! String || summary.trim().isEmpty) throw SummaryException();
-    return summary.trim();
+    if (data is! Map) throw SummaryException();
+    final summary = [
+      for (final line in '${data['summary'] ?? ''}'.split('\n'))
+        if (line.trim().isNotEmpty) line.trim(),
+    ].take(5).toList();
+    if (summary.isEmpty) throw SummaryException();
+    final comments = [
+      for (final point
+          in data['comments'] is List ? data['comments'] as List : const [])
+        if ('$point'.trim().isNotEmpty) '$point'.trim(),
+    ];
+    return ThreadDigest(summary: summary, comments: comments);
   }
 
   void close() => _http.close();

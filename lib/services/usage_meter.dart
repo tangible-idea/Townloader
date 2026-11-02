@@ -32,9 +32,14 @@ const usageServices = [
   UsageService('mapbox_map', 10, 'Mapbox 지도 열기', 'Mapbox map load'),
   // 장소 글 제목 짓기(Claude Haiku). 짧은 입력·출력이라 약 $0.0006.
   UsageService('claude_haiku', 6, 'Claude Haiku (제목)', 'Claude Haiku (titles)'),
-  // 스레드 요약(Claude Opus). 입력 수천·출력 수백 토큰이라 약 $0.035.
-  UsageService('claude', 350, 'Claude Opus (요약)', 'Claude Opus (summaries)'),
-  // Poe 의 Claude Sonnet 봇(본문 장소 읽기·요약 대체). 1회 약 $0.015.
+  // 스레드 요약(Claude Sonnet). 입력 수천·출력 수백 토큰이라 약 $0.01.
+  UsageService(
+    'claude',
+    100,
+    'Claude Sonnet (요약)',
+    'Claude Sonnet (summaries)',
+  ),
+  // Poe 의 Claude Sonnet 봇(본문에서 장소 읽기). 1회 약 $0.015.
   UsageService('poe', 150, 'Poe 챗봇', 'Poe chat bot'),
   // Poe 의 ElevenLabs 음성(댓글 읽어 주기). 1회 약 $0.05.
   UsageService('poe_tts', 500, 'Poe 음성(ElevenLabs)', 'Poe voice (ElevenLabs)'),

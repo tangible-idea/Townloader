@@ -29,8 +29,7 @@ class PlaceDetailSheet extends StatefulWidget {
     isScrollControlled: true,
     useSafeArea: true,
     showDragHandle: true,
-    builder: (_) =>
-        PlaceDetailSheet(place: place, link: link, client: client),
+    builder: (_) => PlaceDetailSheet(place: place, link: link, client: client),
   );
 
   @override

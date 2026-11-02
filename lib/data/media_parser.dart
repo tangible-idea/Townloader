@@ -118,7 +118,8 @@ class MediaParser {
       id: id,
       kind: isVideo ? AssetKind.video : AssetKind.photo,
       variants: variants,
-      thumbnailUrl: thumbnailUrl ?? (isVideo ? null : variants.firstOrNull?.url),
+      thumbnailUrl:
+          thumbnailUrl ?? (isVideo ? null : variants.firstOrNull?.url),
       durationSeconds: duration,
     );
   }

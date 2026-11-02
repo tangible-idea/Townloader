@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -415,9 +416,7 @@ https://www.instagram.com/seoul__guide/
     expect(links.links.single.title, '서울 가을 산책 명소');
   });
 
-  testWidgets('링크 항목을 오른쪽으로 스와이프하면 Read·Delete 버튼이 뜨고 동작한다', (
-    tester,
-  ) async {
+  testWidgets('링크 항목을 오른쪽으로 스와이프하면 Read·Delete 버튼이 뜨고 동작한다', (tester) async {
     final links = controller();
     await links.load(isKo: true);
     await links.addFromText(
@@ -468,6 +467,99 @@ https://www.instagram.com/seoul__guide/
     await tester.tap(find.text('Delete'));
     await tester.pumpAndSettle();
     expect(links.allLinks, isEmpty);
+  });
+
+  Future<LinksController> pumpLinksScreen(WidgetTester tester) async {
+    final links = controller();
+    await links.load(isKo: true);
+    final home = links.selectedCategory!;
+    // 옮길 곳으로 쓸 카테고리를 만들고, 링크는 원래 카테고리에 저장한다.
+    await links.addCategory('맛집');
+    links.selectCategory(home);
+    await links.addFromText(
+      'https://www.instagram.com/p/DdK3PpFmpRJ/',
+      isKo: true,
+    );
+    await tester.pump();
+    await tester.pump();
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider.value(value: links),
+          ChangeNotifierProvider(
+            create: (_) => DownloadService(settings: _FakeSettingsStore()),
+          ),
+          ChangeNotifierProvider(
+            create: (_) => AccountController(
+              client: MapsClient(),
+              links: links,
+              readSession: () async => null,
+              writeSession: (_) async => true,
+            ),
+          ),
+        ],
+        child: const MaterialApp(home: LinksScreen()),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 600));
+    return links;
+  }
+
+  testWidgets('카드를 길게 눌러 위의 카테고리에 놓으면 그 카테고리로 옮긴다', (tester) async {
+    final links = await pumpLinksScreen(tester);
+    final from = links.allLinks.single.category;
+    expect(from, isNot('맛집'));
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.text('@eateat.mag')),
+    );
+    await tester.pump(kLongPressTimeout + const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: 600));
+    // 끄는 동안 카테고리 세로 목록과 쓰레기통이 나온다.
+    expect(find.text('Drop on a category to move'), findsOneWidget);
+    expect(find.text('Drop here to delete'), findsOneWidget);
+    final target = find.ancestor(
+      of: find.text('맛집'),
+      matching: find.byType(DragTarget<SavedLink>),
+    );
+    await gesture.moveTo(tester.getCenter(target));
+    await tester.pump();
+    await gesture.moveTo(tester.getCenter(target) + const Offset(1, 1));
+    await tester.pump();
+    await gesture.up();
+    await tester.pump(const Duration(milliseconds: 600));
+    await tester.pump();
+
+    expect(links.allLinks.single.category, '맛집');
+    // 접히는 애니메이션이 끝나기를 기다린다(썸네일 쉬머가 계속 돌아 pumpAndSettle 은 못 쓴다).
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 200));
+    }
+    // 놓고 나면 원래대로 접힌다.
+    expect(find.text('Drop on a category to move'), findsNothing);
+  });
+
+  testWidgets('카드를 길게 눌러 아래 쓰레기통에 놓으면 지운다', (tester) async {
+    final links = await pumpLinksScreen(tester);
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.text('@eateat.mag')),
+    );
+    await tester.pump(kLongPressTimeout + const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: 600));
+    final trash = find.text('Drop here to delete');
+    await gesture.moveTo(tester.getCenter(trash));
+    await tester.pump();
+    await gesture.moveTo(tester.getCenter(trash) + const Offset(1, 1));
+    await tester.pump();
+    await gesture.up();
+    await tester.pump(const Duration(milliseconds: 600));
+    await tester.pump();
+
+    expect(links.allLinks, isEmpty);
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 200));
+    }
+    expect(find.text('Drop here to delete'), findsNothing);
   });
 }
 

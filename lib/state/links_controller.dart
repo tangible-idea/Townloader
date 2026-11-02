@@ -92,7 +92,8 @@ class LinksController extends ChangeNotifier {
     for (final link in remote.links) {
       final local = byCode[link.code];
       if (local == null ||
-          (local.status != LinkStatus.ready && link.status == LinkStatus.ready)) {
+          (local.status != LinkStatus.ready &&
+              link.status == LinkStatus.ready)) {
         byCode[link.code] = link;
         changed = true;
       } else if (local.title == null && link.title != null) {
@@ -245,10 +246,7 @@ class LinksController extends ChangeNotifier {
       );
     }
     if (index < 0) return -1;
-    _replace(
-      code,
-      (l) => l.copyWith(places: [...l.places]..removeAt(index)),
-    );
+    _replace(code, (l) => l.copyWith(places: [...l.places]..removeAt(index)));
     notifyListeners();
     await _save();
     return index;

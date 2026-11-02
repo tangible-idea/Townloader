@@ -89,13 +89,13 @@ class PublicMap {
       if (raw is! Map<String, dynamic>) continue;
       final url = raw['url'] as String? ?? '';
       final postIndex = raw['post'];
-      final owner =
-          postIndex is int && postIndex < posts.length
-              ? posts[postIndex]
-              : byUrl[url];
+      final owner = postIndex is int && postIndex < posts.length
+          ? posts[postIndex]
+          : byUrl[url];
       final photo = raw['photo'] as String?;
-      final imageIndex =
-          owner == null || photo == null ? -1 : owner.imageUrls.indexOf(photo);
+      final imageIndex = owner == null || photo == null
+          ? -1
+          : owner.imageUrls.indexOf(photo);
       final place = SavedPlace(
         name: raw['name'] as String? ?? '',
         lat: (raw['lat'] as num).toDouble(),
@@ -113,18 +113,17 @@ class PublicMap {
       );
       final key = owner?.url ?? url;
       final link = byUrl[key];
-      byUrl[key] =
-          link == null
-              ? SavedLink(
-                code: url,
-                url: url,
-                category: category,
-                savedAt: DateTime.fromMillisecondsSinceEpoch(0),
-                status: LinkStatus.ready,
-                author: raw['author'] as String?,
-                places: [place],
-              )
-              : link.copyWith(places: [...link.places, place]);
+      byUrl[key] = link == null
+          ? SavedLink(
+              code: url,
+              url: url,
+              category: category,
+              savedAt: DateTime.fromMillisecondsSinceEpoch(0),
+              status: LinkStatus.ready,
+              author: raw['author'] as String?,
+              places: [place],
+            )
+          : link.copyWith(places: [...link.places, place]);
     }
     return PublicMap(category: category, links: byUrl.values.toList());
   }

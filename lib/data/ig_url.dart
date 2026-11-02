@@ -357,18 +357,12 @@ class IgUrlParser {
   }
 
   /// 스킴 없이 붙여넣어도 주소로 볼 수 있는 도메인들.
-  static const _bareHostHints = [
-    'instagram.com',
-    'threads.com',
-    'threads.net',
-  ];
+  static const _bareHostHints = ['instagram.com', 'threads.com', 'threads.net'];
 
   static Uri? _tryParseUri(String raw) {
     final hasScheme = raw.startsWith('http://') || raw.startsWith('https://');
     final looksLikeHost = _bareHostHints.any(raw.contains);
-    final withScheme = hasScheme
-        ? raw
-        : (looksLikeHost ? 'https://$raw' : raw);
+    final withScheme = hasScheme ? raw : (looksLikeHost ? 'https://$raw' : raw);
     final uri = Uri.tryParse(withScheme);
     if (uri == null || !uri.hasScheme || uri.host.isEmpty) return null;
     return uri;

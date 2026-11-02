@@ -56,6 +56,12 @@ class S {
   String get linksRetry => isKo ? '다시 찾기' : 'Retry';
   String get linksDelete => isKo ? '삭제' : 'Delete';
   String get linksMove => isKo ? '카테고리 옮기기' : 'Move to category';
+  String get linksDropToDelete => isKo ? '여기에 놓으면 삭제' : 'Drop here to delete';
+  String get linksDropToMove =>
+      isKo ? '옮길 카테고리에 놓으세요' : 'Drop on a category to move';
+  String linksMovedTo(String category) =>
+      isKo ? '$category(으)로 옮겼어요' : 'Moved to $category';
+  String get linksDeleted => isKo ? '링크를 삭제했어요' : 'Link deleted';
   String get linksNewCategory => isKo ? '새 카테고리' : 'New category';
   String get linksCategoryHint => isKo ? '예: 제주 여행' : 'e.g. Tokyo trip';
   String get linksAdd => isKo ? '만들기' : 'Create';
@@ -66,10 +72,11 @@ class S {
   String get downloadHistory => isKo ? '다운로드 목록' : 'Downloads';
   String get mapOpen => isKo ? '지도로 보기' : 'Show on map';
   String get mapShowAll => isKo ? '전체 보기' : 'Show all';
-  String get mapDeletePlace => isKo ? '목록에서 제외' : 'Remove from list';
-  String get mapDeleteHint => isKo
-      ? '이 글의 장소 목록과 지도에서 빠져요.'
-      : 'It will be removed from this post and the map.';
+  String get mapDropToMove => isKo
+      ? '글을 옮길 카테고리에 놓으세요 (이 글의 장소가 함께 옮겨져요)'
+      : 'Drop on a category to move this post with all its places';
+  String mapMovedPost(String category) =>
+      isKo ? '글을 $category(으)로 옮겼어요' : 'Moved the post to $category';
   String get mapPlaceDeleted => isKo ? '장소를 지웠어요' : 'Place removed';
   String get undo => isKo ? '되돌리기' : 'Undo';
   String get mapAll => isKo ? '모든 장소' : 'All places';

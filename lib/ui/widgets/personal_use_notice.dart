@@ -14,21 +14,20 @@ Future<bool> confirmPersonalUse(BuildContext context) async {
   final s = S.of(context);
   final agreed = await showDialog<bool>(
     context: context,
-    builder:
-        (context) => AlertDialog(
-          title: Text(s.personalUseTitle),
-          content: Text(s.personalUseBody),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: Text(s.cancel),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: Text(s.personalUseAgree),
-            ),
-          ],
+    builder: (context) => AlertDialog(
+      title: Text(s.personalUseTitle),
+      content: Text(s.personalUseBody),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: Text(s.cancel),
         ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(true),
+          child: Text(s.personalUseAgree),
+        ),
+      ],
+    ),
   );
   if (agreed != true) return false;
 

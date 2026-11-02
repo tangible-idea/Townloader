@@ -119,8 +119,7 @@ class SettingsStore {
   Future<bool> readAiSummaryConsent() async =>
       (await _read(_keyAiSummaryConsent)) == 'true';
 
-  Future<bool> writeAiSummaryConsent() =>
-      _write(_keyAiSummaryConsent, 'true');
+  Future<bool> writeAiSummaryConsent() => _write(_keyAiSummaryConsent, 'true');
 
   /// 지도 동기화 계정의 세션(JSON). 로그아웃하면 지운다.
   Future<String?> readAccountSession() => _read(_keyAccountSession);
@@ -134,8 +133,7 @@ class SettingsStore {
     return (raw == 'ko' || raw == 'en') ? raw : null;
   }
 
-  Future<bool> writeLanguage(String? code) =>
-      _write(_keyLanguage, code ?? '');
+  Future<bool> writeLanguage(String? code) => _write(_keyLanguage, code ?? '');
 
   Future<String?> _read(String key) async {
     if (await backend == SettingsBackend.keychain) {

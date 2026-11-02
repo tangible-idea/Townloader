@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -13,6 +15,7 @@ import '../state/links_controller.dart';
 import '../state/resolve_controller.dart';
 import 'downloads_screen.dart';
 import 'places_map_screen.dart';
+import 'widgets/drop_targets.dart';
 import 'widgets/network_thumb.dart';
 import 'widgets/place_category_icon.dart';
 import 'widgets/state_views.dart';
@@ -28,14 +31,25 @@ class LinksScreen extends StatefulWidget {
   State<LinksScreen> createState() => LinksScreenState();
 }
 
-class LinksScreenState extends State<LinksScreen> {
+class LinksScreenState extends State<LinksScreen>
+    with SingleTickerProviderStateMixin {
   final _input = TextEditingController();
+
+  /// 카드를 길게 눌러 끌고 있는 링크. 끄는 동안 위에는 카테고리가 세로로 펼쳐지고
+  /// 아래에는 쓰레기통이 나온다. 놓은 뒤 [_dragMode] 가 다 접힐 때까지 남아 있다.
+  SavedLink? _dragging;
+  late final AnimationController _dragMode = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 360),
+    reverseDuration: const Duration(milliseconds: 260),
+  );
 
   /// 장소 목록을 펼친 링크. 카드가 화면 밖으로 나갔다 돌아와도 펼친 채로 두려고 여기서 들고 있다.
   final _expandedPlaces = <String>{};
 
   @override
   void dispose() {
+    _dragMode.dispose();
     _input.dispose();
     super.dispose();
   }
@@ -288,66 +302,161 @@ class LinksScreenState extends State<LinksScreen> {
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 720),
-            child: CustomScrollView(
-              slivers: [
-                SliverToBoxAdapter(child: _categories(context, controller)),
-                SliverToBoxAdapter(child: _pasteBox(context)),
-                if (!controller.isLoaded)
-                  const SliverFillRemaining(
-                    child: Center(child: CircularProgressIndicator()),
-                  )
-                else if (links.isEmpty)
-                  SliverFillRemaining(
-                    hasScrollBody: false,
-                    child: MessageView(
-                      icon: Icons.bookmarks_outlined,
-                      title: s.linksEmptyTitle,
-                      description: s.linksEmptyDesc,
-                    ),
-                  )
-                else
-                  SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-                    sliver: SliverList.separated(
-                      itemCount: links.length,
-                      separatorBuilder: (_, _) => const SizedBox(height: 8),
-                      itemBuilder: (context, index) {
-                        final item = links[index];
-                        return _SwipeActionCard(
-                          key: ValueKey(item.code),
-                          onRead: () => _openInRead(item.url),
-                          onDelete: () =>
-                              context.read<LinksController>().remove(item),
-                          child: _LinkCard(
-                            link: item,
-                            placesExpanded: _expandedPlaces.contains(item.code),
-                            onTogglePlaces: () => setState(() {
-                              if (!_expandedPlaces.remove(item.code)) {
-                                _expandedPlaces.add(item.code);
-                              }
-                            }),
-                            onRead: () => _openInRead(item.url),
-                            onShare: (buttonContext) => _shareMap(
-                              buttonContext,
-                              AccountController.postShareKey(item.code),
-                              label:
-                                  item.title ??
-                                  (item.author == null
-                                      ? item.code
-                                      : '@${item.author}'),
-                              isPost: true,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
+            child: Stack(
+              children: [
+                _list(context, controller, links),
+                if (_dragging != null) ..._dropTargets(context, controller),
               ],
             ),
           ),
         ),
       ),
     );
+  }
+
+  Widget _list(
+    BuildContext context,
+    LinksController controller,
+    List<SavedLink> links,
+  ) {
+    final s = S.of(context);
+    return CustomScrollView(
+      slivers: [
+        SliverToBoxAdapter(child: _categories(context, controller)),
+        SliverToBoxAdapter(child: _pasteBox(context)),
+        if (!controller.isLoaded)
+          const SliverFillRemaining(
+            child: Center(child: CircularProgressIndicator()),
+          )
+        else if (links.isEmpty)
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: MessageView(
+              icon: Icons.bookmarks_outlined,
+              title: s.linksEmptyTitle,
+              description: s.linksEmptyDesc,
+            ),
+          )
+        else
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+            sliver: SliverList.separated(
+              itemCount: links.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 8),
+              itemBuilder: (context, index) {
+                final item = links[index];
+                final card = _SwipeActionCard(
+                  onRead: () => _openInRead(item.url),
+                  onDelete: () => context.read<LinksController>().remove(item),
+                  child: _LinkCard(
+                    link: item,
+                    placesExpanded: _expandedPlaces.contains(item.code),
+                    onTogglePlaces: () => setState(() {
+                      if (!_expandedPlaces.remove(item.code)) {
+                        _expandedPlaces.add(item.code);
+                      }
+                    }),
+                    onRead: () => _openInRead(item.url),
+                    onShare: (buttonContext) => _shareMap(
+                      buttonContext,
+                      AccountController.postShareKey(item.code),
+                      label:
+                          item.title ??
+                          (item.author == null ? item.code : '@${item.author}'),
+                      isPost: true,
+                    ),
+                  ),
+                );
+                return _draggable(context, item, card);
+              },
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// 길게 누르면 카드를 끌 수 있다. 위의 카테고리에 놓으면 옮기고, 아래 쓰레기통에
+  /// 놓으면 지운다.
+  Widget _draggable(BuildContext context, SavedLink item, Widget card) {
+    return LongPressDraggable<SavedLink>(
+      key: ValueKey(item.code),
+      data: item,
+      dragAnchorStrategy: pointerDragAnchorStrategy,
+      feedback: _DragFeedback(link: item),
+      childWhenDragging: Opacity(opacity: 0.35, child: card),
+      onDragStarted: () {
+        HapticFeedback.mediumImpact();
+        setState(() => _dragging = item);
+        _dragMode.forward();
+      },
+      onDragEnd: (_) => _endDrag(),
+      child: card,
+    );
+  }
+
+  /// 놓은 뒤 카테고리·쓰레기통을 원래대로 접는다.
+  ///
+  /// 옮기거나 지운 카드는 목록에서 빠지는데, 그러면 Flutter 가 끌기 끝 알림을 주지 않아서
+  /// 놓은 곳에서도 직접 부른다. 두 번 불러도 한 번만 접힌다.
+  Future<void> _endDrag() async {
+    if (_dragging == null || _dragMode.status == AnimationStatus.reverse) {
+      return;
+    }
+    await _dragMode.reverse();
+    if (mounted) setState(() => _dragging = null);
+  }
+
+  void _toast(String message) => ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(
+      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
+    );
+
+  List<Widget> _dropTargets(BuildContext context, LinksController controller) {
+    final s = S.of(context);
+    final link = _dragging!;
+    return [
+      // 나머지를 살짝 어둡게 해 놓을 곳에 눈이 가게 한다.
+      Positioned.fill(
+        child: IgnorePointer(
+          child: FadeTransition(
+            opacity: _dragMode,
+            child: const ColoredBox(color: Color(0x33000000)),
+          ),
+        ),
+      ),
+      Positioned(
+        top: 0,
+        left: 0,
+        right: 0,
+        child: CategoryDropPanel<SavedLink>(
+          animation: _dragMode,
+          categories: controller.categories,
+          current: link.category,
+          hint: s.linksDropToMove,
+          canAccept: (link, category) => link.category != category,
+          onDrop: (link, category) {
+            controller.moveTo(link, category);
+            _toast(s.linksMovedTo(category));
+            _endDrag();
+          },
+        ),
+      ),
+      Positioned(
+        left: 24,
+        right: 24,
+        bottom: 20,
+        child: TrashDropZone<SavedLink>(
+          animation: _dragMode,
+          label: s.linksDropToDelete,
+          onDrop: (link) {
+            controller.remove(link);
+            _toast(s.linksDeleted);
+            _endDrag();
+          },
+        ),
+      ),
+    ];
   }
 
   void _openInRead(String url) {
@@ -366,30 +475,34 @@ class LinksScreenState extends State<LinksScreen> {
           in context.watch<AccountController?>()?.shares ?? const [])
         share.category,
     };
-    return SizedBox(
-      height: 52,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        children: [
-          for (final category in controller.categories) ...[
-            ChoiceChip(
-              // 공유해서 public 이 된 카테고리는 링크 아이콘으로 알린다.
-              avatar: shared.contains(category)
-                  ? const Icon(Icons.link, size: 16)
-                  : null,
-              label: Text('$category ${controller.countIn(category)}'),
-              selected: category == controller.selectedCategory,
-              onSelected: (_) => controller.selectCategory(category),
+    // 카드를 끄는 동안에는 이 줄이 세로 목록([CategoryDropPanel])으로 바뀐다.
+    return FadeTransition(
+      opacity: ReverseAnimation(_dragMode),
+      child: SizedBox(
+        height: 52,
+        child: ListView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          children: [
+            for (final category in controller.categories) ...[
+              ChoiceChip(
+                // 공유해서 public 이 된 카테고리는 링크 아이콘으로 알린다.
+                avatar: shared.contains(category)
+                    ? const Icon(Icons.link, size: 16)
+                    : null,
+                label: Text('$category ${controller.countIn(category)}'),
+                selected: category == controller.selectedCategory,
+                onSelected: (_) => controller.selectCategory(category),
+              ),
+              const SizedBox(width: 8),
+            ],
+            ActionChip(
+              avatar: const Icon(Icons.add, size: 18),
+              label: Text(s.linksNewCategory),
+              onPressed: _newCategory,
             ),
-            const SizedBox(width: 8),
           ],
-          ActionChip(
-            avatar: const Icon(Icons.add, size: 18),
-            label: Text(s.linksNewCategory),
-            onPressed: _newCategory,
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -813,7 +926,6 @@ class _PlaceChip extends StatelessWidget {
 /// 카드를 가로로 밀면 Read(읽기 탭으로 보내기)와 Delete(항목 삭제) 버튼을 드러낸다.
 class _SwipeActionCard extends StatefulWidget {
   const _SwipeActionCard({
-    super.key,
     required this.onRead,
     required this.onDelete,
     required this.child,
@@ -981,6 +1093,62 @@ class _ActionTile extends StatelessWidget {
                   ),
                 ),
               ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 끄는 동안 손가락 아래 따라다니는 카드 미리보기.
+class _DragFeedback extends StatelessWidget {
+  const _DragFeedback({required this.link});
+
+  final SavedLink link;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final width = math.min(MediaQuery.sizeOf(context).width * 0.72, 320.0);
+    return Transform.translate(
+      // 손가락에 가리지 않게 살짝 왼쪽 위에 띄운다.
+      offset: Offset(-width / 2, -40),
+      child: Transform.rotate(
+        angle: -0.03,
+        child: Material(
+          elevation: 10,
+          borderRadius: BorderRadius.circular(14),
+          clipBehavior: Clip.antiAlias,
+          color: theme.colorScheme.surface,
+          child: SizedBox(
+            width: width,
+            child: Padding(
+              padding: const EdgeInsets.all(8),
+              child: Row(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: SizedBox(
+                      width: 40,
+                      height: 50,
+                      child: NetworkThumb(url: link.coverUrl),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      link.title ??
+                          (link.author == null ? link.code : '@${link.author}'),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),

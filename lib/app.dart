@@ -106,10 +106,7 @@ class _TownloaderAppState extends State<TownloaderApp> {
             GlobalWidgetsLocalizations.delegate,
             GlobalCupertinoLocalizations.delegate,
           ],
-          supportedLocales: const [
-            Locale('ko'),
-            Locale('en'),
-          ],
+          supportedLocales: const [Locale('ko'), Locale('en')],
           home: const RootShell(),
         ),
       ),

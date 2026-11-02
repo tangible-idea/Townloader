@@ -35,6 +35,9 @@ class _ConsentStore extends SettingsStore {
   Future<bool> readAiSummaryConsent() async => consent;
 
   @override
+  Future<String?> readLanguage() async => null;
+
+  @override
   Future<bool> writeAiSummaryConsent() async {
     consent = true;
     return true;
@@ -84,8 +87,12 @@ void main() {
       requests.add(body);
       if (status != 200) return http.Response('{}', status);
       return http.Response(
-        jsonEncode({'summary': 'summary from ${body['provider']}'}),
+        jsonEncode({
+          'summary': '첫 줄\n둘째 줄\n셋째\n넷째\n다섯째\n여섯째',
+          'comments': ['공감이 많다', '질문이 있다'],
+        }),
         200,
+        headers: {'content-type': 'application/json; charset=utf-8'},
       );
     }),
   );
@@ -94,8 +101,6 @@ void main() {
     WidgetTester tester, {
     required bool consent,
     int status = 200,
-    SummaryKind kind = SummaryKind.thread,
-    bool autoLoad = true,
   }) async {
     final settings = SettingsController(_ConsentStore(consent: consent));
     await settings.load();
@@ -104,11 +109,11 @@ void main() {
         value: settings,
         child: MaterialApp(
           home: Scaffold(
-            body: ThreadSummaryCard(
-              thread: _thread,
-              kind: kind,
-              autoLoad: autoLoad,
-              client: client(status: status),
+            body: SingleChildScrollView(
+              child: ThreadSummaryCard(
+                thread: _thread,
+                client: client(status: status),
+              ),
             ),
           ),
         ),
@@ -129,14 +134,15 @@ void main() {
     expect(find.byType(AlertDialog), findsOneWidget);
     expect(requests, isEmpty);
 
-    await tester.tap(find.byType(FilledButton));
+    await tester.tap(find.text('Agree and summarize'));
     await tester.pumpAndSettle();
     expect(settings.aiSummaryConsented, isTrue);
-    expect(find.text('summary from claude'), findsOneWidget);
+    expect(find.text('첫 줄'), findsOneWidget);
 
     final sent = requests.single;
     expect(sent['id'], 'threads-Root1');
-    expect(sent['kind'], 'thread');
+    expect(sent['kind'], 'digest');
+    expect(sent.containsKey('provider'), isFalse);
     expect(sent['posts'], [
       {'author': 'author', 'text': '(1/2) first', 'byAuthor': true},
       {'author': 'author', 'text': '(2/2) second', 'byAuthor': true},
@@ -144,45 +150,20 @@ void main() {
     ]);
   });
 
-  testWidgets('동의했으면 바로 요약하고, 공급자를 바꾸면 그쪽으로 다시 부른다', (tester) async {
+  testWidgets('본문 요약은 5줄까지, 그 아래 댓글 요점을 블릿으로 보인다', (tester) async {
     await pump(tester, consent: true);
-    expect(find.text('summary from claude'), findsOneWidget);
-
-    await tester.tap(find.text('Poe'));
-    await tester.pumpAndSettle();
-    expect(find.text('summary from poe'), findsOneWidget);
-
-    // 이미 받은 요약은 다시 부르지 않는다.
-    await tester.tap(find.text('Claude'));
-    await tester.pumpAndSettle();
-    expect(find.text('summary from claude'), findsOneWidget);
-    expect(requests.map((r) => r['provider']), ['claude', 'poe']);
+    expect(find.text('다섯째'), findsOneWidget);
+    expect(find.text('여섯째'), findsNothing);
+    expect(find.text('Reply summary'), findsOneWidget);
+    expect(find.text('공감이 많다'), findsOneWidget);
+    expect(find.text('질문이 있다'), findsOneWidget);
+    // Claude/Poe 를 고르는 단추는 없다.
+    expect(find.text('Poe'), findsNothing);
   });
 
   testWidgets('하루 제한에 걸리면 다시 시도 버튼 없이 안내한다', (tester) async {
     await pump(tester, consent: true, status: 429);
     expect(find.textContaining('limit'), findsOneWidget);
     expect(find.text('Try again'), findsNothing);
-  });
-
-  testWidgets('댓글 요약은 동의했어도 누를 때만 부르고, 댓글 요약으로 보낸다', (tester) async {
-    await pump(
-      tester,
-      consent: true,
-      kind: SummaryKind.comments,
-      autoLoad: false,
-    );
-    expect(find.text('Reply summary'), findsOneWidget);
-    expect(requests, isEmpty);
-
-    await tester.tap(find.text('Summarize replies'));
-    await tester.pumpAndSettle();
-    expect(find.text('summary from claude'), findsOneWidget);
-    expect(requests.single['kind'], 'comments');
-
-    // 누른 뒤에는 공급자를 바꾸면 바로 부른다.
-    await tester.tap(find.text('Poe'));
-    await tester.pumpAndSettle();
-    expect(requests.map((r) => r['provider']), ['claude', 'poe']);
   });
 }

@@ -4,8 +4,9 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
-import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
+import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -17,7 +18,9 @@ import '../models/saved_link.dart';
 import '../services/usage_meter.dart';
 import '../state/links_controller.dart';
 import 'map/place_card_image.dart';
+import 'widgets/drop_targets.dart';
 import 'widgets/network_thumb.dart';
+import 'widgets/place_category_icon.dart';
 import 'widgets/place_detail_sheet.dart';
 import 'widgets/state_views.dart';
 
@@ -95,7 +98,17 @@ class _Pin {
   Point get point => Point(coordinates: Position(place.lng, place.lat));
 }
 
-class _PlacesMapScreenState extends State<PlacesMapScreen> {
+class _PlacesMapScreenState extends State<PlacesMapScreen>
+    with SingleTickerProviderStateMixin {
+  /// 하단 카드를 길게 눌러 끌고 있는 장소. 끄는 동안 위에는 카테고리가 세로로
+  /// 펼쳐지고 아래에는 쓰레기통이 나온다(링크 화면과 같다).
+  _Pin? _draggingPin;
+  late final AnimationController _dragMode = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 360),
+    reverseDuration: const Duration(milliseconds: 260),
+  );
+
   late final List<_Pin> _pins = [
     for (final link in widget.links ?? context.read<LinksController>().allLinks)
       if (widget.category == null || link.category == widget.category)
@@ -200,6 +213,7 @@ class _PlacesMapScreenState extends State<PlacesMapScreen> {
 
   @override
   void dispose() {
+    _dragMode.dispose();
     _tapSubscription?.cancel();
     _placesClient.close();
     _pageController?.dispose();
@@ -429,28 +443,33 @@ class _PlacesMapScreenState extends State<PlacesMapScreen> {
     await Future.wait([for (var i = 0; i < 6; i++) worker()]);
   }
 
-  /// 지도 위 풍선 카드에 적을 한 줄. 카카오맵 업종·별점이 있으면 먼저 보여 준다.
+  /// 지도 위 풍선 카드에 적을 한 줄. 업종은 적지 않고, 카카오맵 별점이 있으면 먼저
+  /// 보여 준다.
   static String _pinSubtitle(_Pin pin) {
     final place = pin.place;
-    final kakao = [
-      if (place.category != null && place.category!.isNotEmpty) place.category!,
-      if (place.rating != null && place.rating! > 0)
-        '★ ${place.rating!.toStringAsFixed(1)}',
-    ];
-    if (kakao.isNotEmpty) return kakao.join(' · ');
+    if (place.rating != null && place.rating! > 0) {
+      return '★ ${place.rating!.toStringAsFixed(1)}';
+    }
     if (place.address != null && place.address!.isNotEmpty) {
       return place.address!;
     }
     return pin.link.author == null ? '' : '@${pin.link.author}';
   }
 
+  /// 말풍선을 바로 올린다. 사진을 아직 못 받았으면 업종 아이콘 칸으로 먼저 그려 두고,
+  /// 사진이 오는 대로 같은 말풍선의 그림만 바꾼다.
   Future<void> _addCard(_Pin pin, double sortKey, double pixelRatio) async {
-    final image = await _cards.render(
+    final photoUrl = pin.link.photoFor(pin.place);
+    Future<Uint8List> render({required bool waitForPhoto}) => _cards.render(
       title: pin.place.name,
       subtitle: _pinSubtitle(pin),
-      photoUrl: pin.link.photoFor(pin.place),
+      markColor: Color(_colorOf(pin.link)),
+      placeholderIcon: _placeIcon(pin.place),
+      photoUrl: photoUrl,
       pixelRatio: pixelRatio,
+      waitForPhoto: waitForPhoto,
     );
+    final image = await render(waitForPhoto: false);
     final layer = _cardLayer;
     // 카드를 그리는 사이에 지운 장소면 올리지 않는다.
     if (!mounted || layer == null || !_pins.contains(pin)) return;
@@ -459,44 +478,132 @@ class _PlacesMapScreenState extends State<PlacesMapScreen> {
         geometry: pin.point,
         image: image,
         iconAnchor: IconAnchor.BOTTOM,
-        iconOffset: [0, -4],
+        // 꼬리 끝이 점 바로 위(4px)에 오게. 그림 아래에는 그림자 자리가 있다.
+        iconOffset: [0, PlaceCardImage.tipInset - 4],
         symbolSortKey: sortKey,
       ),
     );
     _pinByAnnotation[annotation.id] = pin;
     _cardOf[pin] = annotation;
+
+    if (photoUrl == null) return;
+    // 사진은 기다리지 않는다. 다음 말풍선들을 먼저 올리고, 사진이 오면 그림만 바꾼다.
+    unawaited(() async {
+      // 이미 사진으로 그렸으면 loadPhoto 가 바로 끝나고, 같은 그림을 다시 그릴 뿐이다.
+      if (!await _cards.loadPhoto(photoUrl, pixelRatio)) return;
+      if (!mounted || !identical(_cardOf[pin], annotation)) return;
+      final withPhoto = await render(waitForPhoto: true);
+      if (!mounted || !identical(_cardOf[pin], annotation)) return;
+      annotation.image = withPhoto;
+      await layer.update(annotation);
+    }());
   }
 
-  /// 길게 눌렀을 때. 지울지 한 번 묻는다.
-  Future<void> _confirmDelete(_Pin pin) async {
+  void _startDrag(_Pin pin) {
+    setState(() => _draggingPin = pin);
+    _dragMode.forward();
+  }
+
+  /// 놓은 뒤 카테고리·쓰레기통을 원래대로 접는다.
+  ///
+  /// 지우거나 옮긴 카드는 묶음에서 빠지는데, 그러면 Flutter 가 끌기 끝 알림을 주지 않아서
+  /// 놓은 곳에서도 직접 부른다. 두 번 불러도 한 번만 접힌다.
+  Future<void> _endDrag() async {
+    if (_draggingPin == null || _dragMode.status == AnimationStatus.reverse) {
+      return;
+    }
+    await _dragMode.reverse();
+    if (mounted) setState(() => _draggingPin = null);
+  }
+
+  void _toast(String message) => ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(
+      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
+    );
+
+  /// 장소에는 따로 카테고리가 없어서, 그 장소를 찾은 글을 통째로 [category] 로 옮긴다.
+  /// 이 지도가 한 카테고리만 보여 주고 있으면 그 글의 장소들은 지도에서 빠진다.
+  void _moveLink(_Pin pin, String category) {
     final s = S.of(context);
-    final delete = await showModalBottomSheet<bool>(
-      context: context,
-      showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              title: Text(pin.place.name),
-              subtitle: Text(s.mapDeleteHint),
-            ),
-            ListTile(
-              leading: Icon(
-                Icons.delete_outline,
-                color: Theme.of(context).colorScheme.error,
-              ),
-              title: Text(
-                s.mapDeletePlace,
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
-              ),
-              onTap: () => Navigator.of(context).pop(true),
-            ),
-          ],
+    context.read<LinksController>().moveTo(pin.link, category);
+    final shown = widget.category;
+    if (shown != null && shown != category) {
+      final leaving = [
+        for (final p in _pins)
+          if (p.link.code == pin.link.code) p,
+      ];
+      final current = _pins.isEmpty ? null : _pins[_current];
+      setState(() {
+        _pins.removeWhere(leaving.contains);
+        final keep = current == null ? -1 : _pins.indexOf(current);
+        _current = keep >= 0 ? keep : math.min(_current, _pins.length - 1);
+        if (_current < 0) _current = 0;
+      });
+      leaving.forEach(_removeFromMap);
+      _syncPage();
+      if (_pins.isNotEmpty) _focus(_current);
+    }
+    _toast(s.mapMovedPost(category));
+  }
+
+  /// 끄는 동안 지도 위에 띄우는 놓을 곳들.
+  List<Widget> _dropTargets(BuildContext context) {
+    final s = S.of(context);
+    final links = context.read<LinksController>();
+    final pin = _draggingPin!;
+    final current = links.allLinks
+        .firstWhere(
+          (link) => link.code == pin.link.code,
+          orElse: () => pin.link,
+        )
+        .category;
+    return [
+      Positioned.fill(
+        child: IgnorePointer(
+          child: FadeTransition(
+            opacity: _dragMode,
+            child: const ColoredBox(color: Color(0x33000000)),
+          ),
         ),
       ),
-    );
-    if (delete == true) await _delete(pin);
+      Positioned(
+        top: 0,
+        left: 0,
+        right: 0,
+        child: SafeArea(
+          bottom: false,
+          child: CategoryDropPanel<_Pin>(
+            animation: _dragMode,
+            categories: links.categories,
+            current: current,
+            hint: s.mapDropToMove,
+            canAccept: (_, category) => category != current,
+            onDrop: (pin, category) {
+              _moveLink(pin, category);
+              _endDrag();
+            },
+          ),
+        ),
+      ),
+      Positioned(
+        left: 24,
+        right: 24,
+        bottom: 0,
+        child: SafeArea(
+          top: false,
+          minimum: const EdgeInsets.only(bottom: 20),
+          child: TrashDropZone<_Pin>(
+            animation: _dragMode,
+            label: s.linksDropToDelete,
+            onDrop: (pin) {
+              _delete(pin);
+              _endDrag();
+            },
+          ),
+        ),
+      ),
+    ];
   }
 
   /// 장소를 목록과 지도에서 지우고 저장한다. 잠시 되돌릴 수 있다.
@@ -629,13 +736,14 @@ class _PlacesMapScreenState extends State<PlacesMapScreen> {
                     )
                   : position,
               active: position >= 0,
-              color: Color(_colorOf(pins.first.link)),
               onSelect: (at) => _select(group[at]),
               onTap: (at) {
                 _select(group[at]);
                 _showDetail(pins[at]);
               },
-              onLongPress: _editable ? (at) => _confirmDelete(pins[at]) : null,
+              // 내 지도에서만 길게 눌러 끌어 옮기거나 지운다.
+              onDragStarted: _editable ? _startDrag : null,
+              onDragEnd: _endDrag,
             ),
           );
         },
@@ -825,6 +933,7 @@ class _PlacesMapScreenState extends State<PlacesMapScreen> {
               bottom: 0,
               child: SafeArea(top: false, child: _deckCarousel()),
             ),
+          if (_draggingPin != null) ..._dropTargets(context),
         ],
       ),
     );
@@ -838,10 +947,10 @@ class _PlaceDeck extends StatelessWidget {
     required this.pins,
     required this.front,
     required this.active,
-    required this.color,
     required this.onSelect,
     required this.onTap,
-    this.onLongPress,
+    this.onDragStarted,
+    this.onDragEnd,
   });
 
   /// 카드 한 장(아래 여백 포함)의 높이.
@@ -858,10 +967,12 @@ class _PlaceDeck extends StatelessWidget {
 
   /// 지금 고른 장소가 이 묶음에 있는지. 맨 앞 카드를 강조한다.
   final bool active;
-  final Color color;
   final ValueChanged<int> onSelect;
   final ValueChanged<int> onTap;
-  final ValueChanged<int>? onLongPress;
+
+  /// 있으면 맨 앞 카드를 길게 눌러 끌 수 있다.
+  final ValueChanged<_Pin>? onDragStarted;
+  final VoidCallback? onDragEnd;
 
   @override
   Widget build(BuildContext context) {
@@ -890,20 +1001,37 @@ class _PlaceDeck extends StatelessWidget {
                 depth: depthOf(index),
                 child: IgnorePointer(
                   ignoring: depthOf(index) != 0,
-                  child: _PlaceTile(
-                    pin: pins[index],
-                    color: color,
-                    selected: active && depthOf(index) == 0,
-                    onTap: () => onTap(index),
-                    onLongPress: onLongPress == null
-                        ? null
-                        : () => onLongPress!(index),
+                  child: _draggable(
+                    index,
+                    _PlaceTile(
+                      pin: pins[index],
+                      selected: active && depthOf(index) == 0,
+                      onTap: () => onTap(index),
+                    ),
                   ),
                 ),
               ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _draggable(int index, Widget tile) {
+    final started = onDragStarted;
+    if (started == null) return tile;
+    final pin = pins[index];
+    return LongPressDraggable<_Pin>(
+      data: pin,
+      dragAnchorStrategy: pointerDragAnchorStrategy,
+      feedback: _PinDragFeedback(pin: pin),
+      childWhenDragging: Opacity(opacity: 0.35, child: tile),
+      onDragStarted: () {
+        HapticFeedback.mediumImpact();
+        started(pin);
+      },
+      onDragEnd: (_) => onDragEnd?.call(),
+      child: tile,
     );
   }
 }
@@ -949,21 +1077,15 @@ class _DeckCard extends StatelessWidget {
 class _PlaceTile extends StatelessWidget {
   const _PlaceTile({
     required this.pin,
-    required this.color,
     required this.selected,
     required this.onTap,
-    this.onLongPress,
   });
 
   final _Pin pin;
 
   /// 이 장소가 속한 카테고리의 점 색.
-  final Color color;
   final bool selected;
   final VoidCallback onTap;
-
-  /// 내 지도에서만 있다. 길게 누르면 지울지 묻는다.
-  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -1005,13 +1127,16 @@ class _PlaceTile extends StatelessWidget {
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onTap,
-          onLongPress: onLongPress,
           child: Row(
             children: [
               SizedBox(
                 width: 104,
                 height: double.infinity,
-                child: NetworkThumb(url: pin.link.photoFor(place)),
+                child: NetworkThumb(
+                  url: pin.link.photoFor(place),
+                  icon: _placeIcon(place),
+                  shimmer: false,
+                ),
               ),
               Expanded(
                 child: Padding(
@@ -1032,16 +1157,6 @@ class _PlaceTile extends StatelessWidget {
                               ),
                             ),
                           ),
-                          if (place.category != null &&
-                              place.category!.isNotEmpty) ...[
-                            const SizedBox(width: 6),
-                            Text(
-                              place.category!,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: muted,
-                            ),
-                          ],
                           if (ratingLabel.isNotEmpty) ...[
                             const SizedBox(width: 6),
                             Text(
@@ -1064,32 +1179,6 @@ class _PlaceTile extends StatelessWidget {
                           style: muted,
                         ),
                       ],
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          Container(
-                            width: 8,
-                            height: 8,
-                            decoration: BoxDecoration(
-                              color: color,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Flexible(
-                            child: Text(
-                              [
-                                if (pin.link.title != null) pin.link.title!,
-                                if (pin.link.author != null)
-                                  '@${pin.link.author}',
-                              ].join(' · '),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: muted,
-                            ),
-                          ),
-                        ],
-                      ),
                     ],
                   ),
                 ),
@@ -1162,3 +1251,66 @@ class _LegendChip extends StatelessWidget {
     );
   }
 }
+
+/// 끄는 동안 손가락 아래 따라다니는 장소 카드 미리보기.
+class _PinDragFeedback extends StatelessWidget {
+  const _PinDragFeedback({required this.pin});
+
+  final _Pin pin;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final width = math.min(MediaQuery.sizeOf(context).width * 0.72, 320.0);
+    return Transform.translate(
+      // 손가락에 가리지 않게 살짝 위에 띄운다.
+      offset: Offset(-width / 2, -40),
+      child: Transform.rotate(
+        angle: -0.03,
+        child: Material(
+          elevation: 10,
+          borderRadius: BorderRadius.circular(14),
+          clipBehavior: Clip.antiAlias,
+          color: theme.colorScheme.surface,
+          child: SizedBox(
+            width: width,
+            child: Padding(
+              padding: const EdgeInsets.all(8),
+              child: Row(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: SizedBox(
+                      width: 44,
+                      height: 44,
+                      child: NetworkThumb(
+                        url: pin.link.photoFor(pin.place),
+                        icon: _placeIcon(pin.place),
+                        shimmer: false,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      pin.place.name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 지도 카드 사진 자리에 둘 업종 아이콘. 업종을 모르면 일반 장소 아이콘.
+IconData _placeIcon(SavedPlace place) =>
+    placeCategoryIcon(place.category) ?? Icons.place_outlined;

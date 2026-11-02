@@ -25,19 +25,17 @@ class AccountCard extends StatelessWidget {
       final providers = [
         if (signIn.googleAvailable)
           FilledButton.icon(
-            onPressed:
-                account.busy
-                    ? null
-                    : () => account.signIn('google', signIn.google),
+            onPressed: account.busy
+                ? null
+                : () => account.signIn('google', signIn.google),
             icon: const Icon(Icons.login),
             label: Text(s.signInGoogle),
           ),
         if (signIn.appleAvailable)
           FilledButton.tonalIcon(
-            onPressed:
-                account.busy
-                    ? null
-                    : () => account.signIn('apple', signIn.apple),
+            onPressed: account.busy
+                ? null
+                : () => account.signIn('apple', signIn.apple),
             icon: const Icon(Icons.apple),
             label: Text(s.signInApple),
           ),
@@ -72,16 +70,15 @@ class AccountCard extends StatelessWidget {
     final who =
         session.email ?? (session.provider == 'apple' ? 'Apple' : 'Google');
     final lastSynced = account.lastSynced;
-    final status =
-        account.syncing
-            ? s.syncing
-            : lastSynced == null
-            ? null
-            : s.syncedAt(
-              MaterialLocalizations.of(
-                context,
-              ).formatTimeOfDay(TimeOfDay.fromDateTime(lastSynced)),
-            );
+    final status = account.syncing
+        ? s.syncing
+        : lastSynced == null
+        ? null
+        : s.syncedAt(
+            MaterialLocalizations.of(
+              context,
+            ).formatTimeOfDay(TimeOfDay.fromDateTime(lastSynced)),
+          );
 
     return Card(
       child: Column(
@@ -137,24 +134,23 @@ class AccountCard extends StatelessWidget {
     final signIn = context.read<SocialSignIn>();
     final confirmed = await showDialog<bool>(
       context: context,
-      builder:
-          (context) => AlertDialog(
-            title: Text(s.deleteAccountTitle),
-            content: Text(s.deleteAccountBody),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
-                child: Text(s.cancel),
-              ),
-              FilledButton(
-                style: FilledButton.styleFrom(
-                  backgroundColor: Theme.of(context).colorScheme.error,
-                ),
-                onPressed: () => Navigator.of(context).pop(true),
-                child: Text(s.delete),
-              ),
-            ],
+      builder: (context) => AlertDialog(
+        title: Text(s.deleteAccountTitle),
+        content: Text(s.deleteAccountBody),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(s.cancel),
           ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(s.delete),
+          ),
+        ],
+      ),
     );
     if (confirmed != true) return;
     try {

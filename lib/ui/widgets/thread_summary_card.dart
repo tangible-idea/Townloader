@@ -5,25 +5,17 @@ import '../../data/summary_client.dart';
 import '../../l10n/strings.dart';
 import '../../models/threads_thread.dart';
 import '../../state/settings_controller.dart';
+import 'shimmer.dart';
 
-/// 스레드 맨 위에 두는 AI 요약 카드. [kind] 가 댓글이면 댓글 구역 위에 두는 댓글 요약.
+/// 스레드 맨 위에 두는 AI 요약 카드. 본문 요약(5줄 이하) 아래에 댓글 요점을 블릿으로
+/// 함께 보여 준다. 받아 오면 줄마다 차례로 떠오른다.
 ///
 /// 처음에는 글을 외부 AI 로 보내도 되는지 동의를 받고, 동의한 뒤로는 열 때마다 바로
-/// 요약한다([autoLoad] 가 false 면 누를 때만). Claude 와 Poe 를 바꿔 가며 비교할 수 있다.
+/// 요약한다.
 class ThreadSummaryCard extends StatefulWidget {
-  const ThreadSummaryCard({
-    super.key,
-    required this.thread,
-    this.kind = SummaryKind.thread,
-    this.autoLoad = true,
-    this.client,
-  });
+  const ThreadSummaryCard({super.key, required this.thread, this.client});
 
   final ThreadsThread thread;
-  final SummaryKind kind;
-
-  /// 동의한 뒤에는 열자마자 요약할지. false 면 버튼을 눌러야 부른다.
-  final bool autoLoad;
 
   /// 테스트에서 주입한다. 없으면 빌드 설정의 프록시로 만든다.
   final SummaryClient? client;
@@ -32,27 +24,31 @@ class ThreadSummaryCard extends StatefulWidget {
   State<ThreadSummaryCard> createState() => _ThreadSummaryCardState();
 }
 
-class _ThreadSummaryCardState extends State<ThreadSummaryCard> {
+class _ThreadSummaryCardState extends State<ThreadSummaryCard>
+    with SingleTickerProviderStateMixin {
   late final SummaryClient _client = widget.client ?? SummaryClient();
-  SummaryProvider _provider = SummaryProvider.claude;
 
-  /// 공급자별로 받은 요약. 다시 고르면 새로 부르지 않는다.
-  final Map<SummaryProvider, String> _summaries = {};
+  /// 요약이 도착하면 처음부터 다시 돌려 줄마다 차례로 보인다.
+  late final AnimationController _reveal = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  );
+
+  ThreadDigest? _digest;
   bool _loading = false;
+  bool _requested = false;
   SummaryException? _error;
 
   /// 요청이 겹치면 마지막 것만 화면에 반영한다.
   int _request = 0;
-
-  /// 요약을 부르기로 했는지. [ThreadSummaryCard.autoLoad] 가 아니면 누른 뒤에 true.
-  late bool _requested = widget.autoLoad;
 
   bool get _consented => context.read<SettingsController>().aiSummaryConsented;
 
   @override
   void initState() {
     super.initState();
-    if (_requested && _consented) {
+    if (_consented) {
+      _requested = true;
       WidgetsBinding.instance.addPostFrameCallback((_) => _load());
     }
   }
@@ -61,42 +57,37 @@ class _ThreadSummaryCardState extends State<ThreadSummaryCard> {
   void didUpdateWidget(ThreadSummaryCard oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (!identical(oldWidget.thread, widget.thread)) {
-      _summaries.clear();
+      _digest = null;
       _error = null;
-      _requested = widget.autoLoad;
+      _reveal.reset();
       if (_requested && _consented) _load();
     }
   }
 
   @override
   void dispose() {
+    _reveal.dispose();
     if (widget.client == null) _client.close();
     super.dispose();
   }
 
   Future<void> _load() async {
-    if (_summaries.containsKey(_provider)) {
-      setState(() => _error = null);
-      return;
-    }
     final request = ++_request;
-    final provider = _provider;
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final summary = await _client.summarize(
+      final digest = await _client.summarize(
         widget.thread,
-        provider: provider,
         isKo: S.of(context).isKo,
-        kind: widget.kind,
       );
       if (!mounted || request != _request) return;
       setState(() {
-        _summaries[provider] = summary;
+        _digest = digest;
         _loading = false;
       });
+      _reveal.forward(from: 0);
     } on SummaryException catch (error) {
       if (!mounted || request != _request) return;
       setState(() {
@@ -108,43 +99,32 @@ class _ThreadSummaryCardState extends State<ThreadSummaryCard> {
 
   /// 요약 보기 버튼. 아직 동의하지 않았으면 먼저 묻는다.
   Future<void> _start() async {
-    if (!_consented) return _askConsentAndLoad();
+    if (!_consented) {
+      final s = S.of(context);
+      final settings = context.read<SettingsController>();
+      final agreed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(s.aiConsentTitle),
+          content: Text(s.aiConsentBody(summaryProviderLabel)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text(s.cancel),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: Text(s.aiConsentAgree),
+            ),
+          ],
+        ),
+      );
+      if (agreed != true || !mounted) return;
+      await settings.consentToAiSummary();
+      if (!mounted) return;
+    }
     setState(() => _requested = true);
     await _load();
-  }
-
-  Future<void> _askConsentAndLoad() async {
-    final s = S.of(context);
-    final settings = context.read<SettingsController>();
-    final agreed = await showDialog<bool>(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            title: Text(s.aiConsentTitle),
-            content: Text(s.aiConsentBody(_provider.label)),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
-                child: Text(s.cancel),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.of(context).pop(true),
-                child: Text(s.aiConsentAgree),
-              ),
-            ],
-          ),
-    );
-    if (agreed != true || !mounted) return;
-    await settings.consentToAiSummary();
-    if (!mounted) return;
-    setState(() => _requested = true);
-    _load();
-  }
-
-  void _switchProvider(SummaryProvider provider) {
-    if (provider == _provider) return;
-    setState(() => _provider = provider);
-    if (_requested && _consented) _load();
   }
 
   @override
@@ -152,7 +132,7 @@ class _ThreadSummaryCardState extends State<ThreadSummaryCard> {
     final s = S.of(context);
     final theme = Theme.of(context);
     final consented = context.watch<SettingsController>().aiSummaryConsented;
-    final summary = _summaries[_provider];
+    final digest = _digest;
     final muted = theme.textTheme.bodySmall?.copyWith(
       color: theme.colorScheme.onSurfaceVariant,
     );
@@ -160,42 +140,19 @@ class _ThreadSummaryCardState extends State<ThreadSummaryCard> {
     return Card(
       margin: EdgeInsets.zero,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 12, 16),
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Row(
               children: [
-                const Icon(Icons.auto_awesome, size: 18),
+                Icon(
+                  Icons.auto_awesome,
+                  size: 18,
+                  color: theme.colorScheme.primary,
+                ),
                 const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    widget.kind == SummaryKind.comments
-                        ? s.commentSummaryTitle
-                        : s.summaryTitle,
-                    style: theme.textTheme.titleSmall,
-                  ),
-                ),
-                SegmentedButton<SummaryProvider>(
-                  segments: const [
-                    ButtonSegment(
-                      value: SummaryProvider.claude,
-                      label: Text('Claude'),
-                    ),
-                    ButtonSegment(
-                      value: SummaryProvider.poe,
-                      label: Text('Poe'),
-                    ),
-                  ],
-                  selected: {_provider},
-                  showSelectedIcon: false,
-                  style: const ButtonStyle(
-                    visualDensity: VisualDensity.compact,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  onSelectionChanged:
-                      (selection) => _switchProvider(selection.first),
-                ),
+                Text(s.summaryTitle, style: theme.textTheme.titleSmall),
               ],
             ),
             const SizedBox(height: 12),
@@ -206,35 +163,17 @@ class _ThreadSummaryCardState extends State<ThreadSummaryCard> {
                 ),
                 onPressed: _start,
                 icon: const Icon(Icons.auto_awesome),
-                label: Text(
-                  widget.kind == SummaryKind.comments
-                      ? s.commentSummaryShow
-                      : s.summaryShow,
-                ),
+                label: Text(s.summaryShow),
               )
-            else if (_loading && summary == null)
-              Row(
-                children: [
-                  const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                  const SizedBox(width: 10),
-                  Text(s.summaryLoading, style: muted),
-                ],
+            else if (_loading && digest == null)
+              const _SummarySkeleton()
+            else if (digest != null)
+              AnimatedSize(
+                duration: const Duration(milliseconds: 250),
+                alignment: Alignment.topCenter,
+                child: _body(context, digest, muted),
               )
-            else if (summary != null) ...[
-              SelectableText(summary, style: theme.textTheme.bodyMedium),
-              const SizedBox(height: 10),
-              Text(
-                widget.kind == SummaryKind.comments &&
-                        widget.thread.hasMoreReplies
-                    ? '${s.commentSummaryPartial} ${s.summaryNote}'
-                    : s.summaryNote,
-                style: muted,
-              ),
-            ] else if (_error != null)
+            else if (_error != null)
               Row(
                 children: [
                   Expanded(
@@ -252,6 +191,161 @@ class _ThreadSummaryCardState extends State<ThreadSummaryCard> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _body(BuildContext context, ThreadDigest digest, TextStyle? muted) {
+    final s = S.of(context);
+    final theme = Theme.of(context);
+    // 본문 줄, 댓글 머리글, 댓글 요점, 안내 순서로 차례로 떠오른다.
+    final count =
+        digest.summary.length +
+        (digest.comments.isEmpty ? 0 : 1 + digest.comments.length) +
+        1;
+    var index = 0;
+    Widget reveal(Widget child) =>
+        _Reveal(animation: _reveal, index: index++, count: count, child: child);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final line in digest.summary)
+          reveal(
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: SelectableText(
+                line,
+                style: theme.textTheme.bodyMedium?.copyWith(height: 1.45),
+              ),
+            ),
+          ),
+        if (digest.comments.isNotEmpty) ...[
+          reveal(
+            Padding(
+              padding: const EdgeInsets.only(top: 10, bottom: 6),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.forum_outlined,
+                    size: 16,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    s.commentSummaryTitle,
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          for (final point in digest.comments)
+            reveal(
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(4, 8, 8, 0),
+                      child: Container(
+                        width: 5,
+                        height: 5,
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.primary,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: SelectableText(
+                        point,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          height: 1.45,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+        reveal(
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              widget.thread.hasMoreReplies && digest.comments.isNotEmpty
+                  ? '${s.commentSummaryPartial} ${s.summaryNote}'
+                  : s.summaryNote,
+              style: muted,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// [index] 번째 줄을 앞 줄보다 조금 늦게, 아래에서 살짝 떠오르며 보이게 한다.
+class _Reveal extends StatelessWidget {
+  const _Reveal({
+    required this.animation,
+    required this.index,
+    required this.count,
+    required this.child,
+  });
+
+  final Animation<double> animation;
+  final int index;
+  final int count;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final start = count <= 1 ? 0.0 : 0.6 * index / (count - 1);
+    final curved = CurvedAnimation(
+      parent: animation,
+      curve: Interval(
+        start,
+        (start + 0.4).clamp(0.0, 1.0),
+        curve: Curves.easeOutCubic,
+      ),
+    );
+    return FadeTransition(
+      opacity: curved,
+      child: SlideTransition(
+        position: Tween(
+          begin: const Offset(0, 0.35),
+          end: Offset.zero,
+        ).animate(curved),
+        child: child,
+      ),
+    );
+  }
+}
+
+/// 요약을 만드는 동안 보이는 쉬머 줄.
+class _SummarySkeleton extends StatelessWidget {
+  const _SummarySkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    Widget bar(double widthFactor) => Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: FractionallySizedBox(
+        alignment: Alignment.centerLeft,
+        widthFactor: widthFactor,
+        child: const ClipRRect(
+          borderRadius: BorderRadius.all(Radius.circular(6)),
+          child: SizedBox(height: 14, child: ShimmerBox()),
+        ),
+      ),
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [bar(0.95), bar(0.85), bar(0.9), bar(0.6)],
     );
   }
 }

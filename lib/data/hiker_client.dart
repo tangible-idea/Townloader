@@ -65,7 +65,10 @@ class HikerClient {
     } else {
       final key = readApiKey();
       if (key == null || key.isEmpty) {
-        throw HikerException('이 빌드에는 인스타그램 조회용 키가 들어 있지 않습니다.', statusCode: 401);
+        throw HikerException(
+          '이 빌드에는 인스타그램 조회용 키가 들어 있지 않습니다.',
+          statusCode: 401,
+        );
       }
       uri = Uri.https(host, path, _stringifyQuery(query));
       headers = {'x-access-key': key, 'accept': 'application/json'};

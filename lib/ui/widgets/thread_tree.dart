@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../../config/app_config.dart';
 import '../../data/poe_tts_client.dart';
-import '../../data/summary_client.dart';
 
 import '../../l10n/strings.dart';
 import '../../models/ig_post.dart';
@@ -210,14 +209,6 @@ class _ThreadTreeState extends State<ThreadTree> {
             ?readAloud,
           ],
         ),
-        if (AppConfig.hasProxy && replyNodes.length >= 3) ...[
-          ThreadSummaryCard(
-            thread: thread,
-            kind: SummaryKind.comments,
-            autoLoad: false,
-          ),
-          const SizedBox(height: 8),
-        ],
       ],
     );
 

@@ -164,7 +164,9 @@ class HomeScreenState extends State<HomeScreen> {
         icon: username != null
             ? Icons.account_circle_outlined
             : Icons.error_outline,
-        title: username != null ? s.profileLinkNotice(username) : s.failedToLoad,
+        title: username != null
+            ? s.profileLinkNotice(username)
+            : s.failedToLoad,
         description: username != null ? null : error,
         actionLabel: username != null ? s.openProfile(username) : null,
         onAction: username != null

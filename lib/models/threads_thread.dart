@@ -46,9 +46,7 @@ class ThreadsThread {
   bool get isSinglePost => nodes.length == 1;
 
   /// 링크가 가리키는 글. 미디어가 없으면 빈 목록이다.
-  List<IgPost> get mainPosts => [
-    if (root.hasDownloadableAssets) root,
-  ];
+  List<IgPost> get mainPosts => [if (root.hasDownloadableAssets) root];
 
   /// 댓글까지 포함해 미디어가 있는 모든 글.
   List<IgPost> get allPosts => [

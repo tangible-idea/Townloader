@@ -328,10 +328,36 @@ export function splitPlaceLine(text: string): Omit<Candidate, "imageIndex">[] {
   const address = rest.join(" ").trim() || null;
   return rawName
     .split(/\s+(?:&|＆|및)\s+/)
-    // 해시태그·멘션 표시는 이름이 아니다. "#수원 서호공원" → "수원 서호공원".
-    .map((name) => name.replace(/^[\s@＠#＃📍]+/u, "").trim())
+    .map(cleanPlaceName)
     .filter((name) => name.length >= 2)
     .map((name) => ({ name, address }));
+}
+
+/**
+ * 장소 이름 앞뒤에 붙은 군더더기를 뗀다.
+ *
+ *   "#수원 서호공원" → "수원 서호공원"   해시태그·멘션 표시
+ *   "1창덕궁", "4. 올림픽공원", "①남산" → 번호 없는 이름   목록 번호
+ *   "창덕궁~", "창덕궁 ✨" → "창덕궁"   끝의 물결·장식 기호
+ *
+ * "63빌딩", "7번국도", "1913송정역시장" 처럼 숫자가 이름의 일부인 것은 남긴다:
+ * 목록 번호는 20 이하이고, 바로 뒤에 번·호·층 같은 세는 말이 오지 않는다.
+ */
+export function cleanPlaceName(text: string): string {
+  let name = text.trim();
+  for (let i = 0; i < 3; i++) {
+    const before = name;
+    name = name
+      .replace(/^[\s@＠#＃📍•·\-–—*]+/u, "")
+      .replace(/^[\u2460-\u2473\u2776-\u277F\u24F5-\u24FE]\s*/u, "")
+      .replace(/^(?:no\.?\s*)?(\d{1,2})(?:\s*[.)\]:]\s*|\s+|(?=[^\d\s]))(?![번호층차월일년인세명개곳위등])/iu, (match, n) =>
+        Number(n) >= 1 && Number(n) <= 20 ? "" : match,
+      )
+      .replace(/[\s~〜～∼\-–—…·.,!?✨⭐️❤️💕🔥]+$/u, "")
+      .trim();
+    if (name === before) break;
+  }
+  return name;
 }
 
 // ── 2. 본문 → 장소 이름 (사진에서 못 찾았을 때) ──────────────────────────────
@@ -745,17 +771,22 @@ function normalize(text: string): string {
   return text.toLowerCase().replace(/[\s\p{P}\p{S}]/gu, "");
 }
 
-/** 같은 이름이거나 같은 카카오 장소이거나 100m 안에 있으면 하나로 친다. 먼저 찾은(태그 > 사진 > 본문) 쪽을 남긴다. */
+/**
+ * 같은 이름이거나 같은 카카오 장소이거나 100m 안에 있으면 하나로 친다. 먼저 찾은(태그 >
+ * 사진 > 본문) 쪽을 남기되, 남긴 쪽이 대략적인 위치(주소로 대신한 것)이고 새로 온 쪽이
+ * 정확하면 정확한 쪽으로 바꾼다.
+ */
 function dedupe(places: Place[]): Place[] {
   const kept: Place[] = [];
   for (const place of places) {
-    const duplicate = kept.some(
+    const index = kept.findIndex(
       (other) =>
         normalize(other.name) === normalize(place.name) ||
         (other.placeUrl != null && other.placeUrl === place.placeUrl) ||
         distanceMeters(other, place) < 100,
     );
-    if (!duplicate) kept.push(place);
+    if (index < 0) kept.push(place);
+    else if (kept[index].approximate && !place.approximate) kept[index] = place;
   }
   return kept;
 }

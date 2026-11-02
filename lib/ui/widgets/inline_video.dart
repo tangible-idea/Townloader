@@ -3,6 +3,7 @@ import 'package:video_player/video_player.dart';
 
 import '../../models/ig_post.dart';
 import 'network_thumb.dart';
+import 'shimmer.dart';
 
 /// 카드 안에서 크게 보여 주는 동영상. 처음엔 썸네일과 재생 버튼만 두고,
 /// 누르면 그 자리에서 재생한다. 다시 누르면 멈춘다.
@@ -86,7 +87,9 @@ class _InlineVideoState extends State<InlineVideo> {
               url: widget.item.thumbnailUrl,
               icon: Icons.movie_outlined,
             ),
-          if (!playing)
+          // 불러오는 동안에는 재생 단추 대신 썸네일 위로 쉬머가 지나간다.
+          if (!playing && loading) const ShimmerBox(overlay: true),
+          if (!playing && !loading)
             Center(
               child: Container(
                 padding: const EdgeInsets.all(12),
@@ -94,20 +97,11 @@ class _InlineVideoState extends State<InlineVideo> {
                   color: Colors.black.withValues(alpha: 0.45),
                   shape: BoxShape.circle,
                 ),
-                child: loading
-                    ? const SizedBox(
-                        width: 28,
-                        height: 28,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.5,
-                          color: Colors.white,
-                        ),
-                      )
-                    : Icon(
-                        _failed ? Icons.error_outline : Icons.play_arrow,
-                        color: Colors.white,
-                        size: 32,
-                      ),
+                child: Icon(
+                  _failed ? Icons.error_outline : Icons.play_arrow,
+                  color: Colors.white,
+                  size: 32,
+                ),
               ),
             ),
         ],

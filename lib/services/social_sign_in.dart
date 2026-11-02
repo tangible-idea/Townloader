@@ -25,10 +25,9 @@ class SocialSignIn {
     final signIn = GoogleSignIn.instance;
     if (!_googleReady) {
       await signIn.initialize(
-        clientId:
-            Platform.isIOS && AppConfig.googleIosClientId.isNotEmpty
-                ? AppConfig.googleIosClientId
-                : null,
+        clientId: Platform.isIOS && AppConfig.googleIosClientId.isNotEmpty
+            ? AppConfig.googleIosClientId
+            : null,
         serverClientId: AppConfig.googleServerClientId,
       );
       _googleReady = true;

@@ -41,19 +41,17 @@ class _SharedMapScreenState extends State<SharedMapScreen> {
         }
         return Scaffold(
           appBar: AppBar(),
-          body:
-              snapshot.hasError
-                  ? MessageView(
-                    icon: Icons.map_outlined,
-                    title:
-                        snapshot.error is MapsException
-                            ? (snapshot.error as MapsException).message
-                            : snapshot.error.toString(),
-                    actionLabel: s.retry,
-                    onAction: () => setState(() => _map = _load()),
-                    isError: true,
-                  )
-                  : LoadingView(label: s.sharedMapLoading),
+          body: snapshot.hasError
+              ? MessageView(
+                  icon: Icons.map_outlined,
+                  title: snapshot.error is MapsException
+                      ? (snapshot.error as MapsException).message
+                      : snapshot.error.toString(),
+                  actionLabel: s.retry,
+                  onAction: () => setState(() => _map = _load()),
+                  isError: true,
+                )
+              : LoadingView(label: s.sharedMapLoading),
         );
       },
     );
