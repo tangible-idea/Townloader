@@ -588,6 +588,15 @@ class _StoreSettings extends SettingsController {
 
 class _MemoryStore extends SettingsStore {
   @override
+  Future<String?> readLanguage() async => null;
+
+  @override
+  Future<String?> readSummaryVotes() async => null;
+
+  @override
+  Future<bool> writeSummaryVotes(String value) async => true;
+
+  @override
   Future<SettingsBackend> get backend async => SettingsBackend.keychain;
   @override
   Future<String?> readApiKey() async => null;

@@ -120,13 +120,7 @@ class HomeScreenState extends State<HomeScreen> {
                       height: 48,
                     ),
                     onPressed: resolve.isLoading ? null : _submit,
-                    icon: resolve.isLoading
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.arrow_forward),
+                    icon: const Icon(Icons.arrow_forward),
                   ),
                 ],
               ),
@@ -149,7 +143,7 @@ class HomeScreenState extends State<HomeScreen> {
     final resolve = context.watch<ResolveController>();
 
     if (resolve.isLoading) {
-      return LoadingView(label: s.fetching);
+      return ReaderLoadingView(label: s.fetching);
     }
 
     final error = resolve.error;

@@ -6,6 +6,8 @@ compatibility_flags = ["nodejs_compat"]
 [vars]
 # Poe 봇 이름. poe.com 에서 쓰려는 봇 이름으로 바꾼다.
 POE_MODEL = "Claude-Sonnet-4.5"
+# 요약 A/B 테스트에서 Claude Sonnet 과 견주는 Poe 봇.
+SUMMARY_POE_MODEL = "gemini-3.8-flash"
 DAILY_LIMIT = "30"
 
 # 요약 캐시와 하루 제한 카운터.
@@ -43,6 +45,15 @@ namespace_id = "1003"
 
   [ratelimits.simple]
   limit = 60
+  period = 60
+
+# 요약 평가(/summary-feedback)의 IP 별 분당 제한.
+[[ratelimits]]
+name = "FEEDBACK_LIMITER"
+namespace_id = "1004"
+
+  [ratelimits.simple]
+  limit = 30
   period = 60
 
 # 이 Worker 자신. /places 가 좌표 찾기를 몇 개씩 따로 실행해, 실행당 바깥 요청 한도(무료 50)를 나눠 쓴다.

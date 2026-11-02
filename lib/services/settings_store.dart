@@ -59,7 +59,9 @@ class SettingsStore {
   static const _keyQuality = 'quality_preference';
   static const _keySaveToGallery = 'save_to_gallery';
   static const _keyPersonalUseAck = 'personal_use_ack';
-  static const _keyAiSummaryConsent = 'ai_summary_consent';
+  // 요약이 Poe 로도 무작위로 가게 되면서 안내가 바뀌어, 예전 동의는 쓰지 않고 다시 묻는다.
+  static const _keyAiSummaryConsent = 'ai_summary_consent_v2';
+  static const _keySummaryVotes = 'summary_votes';
   static const _keyAccountSession = 'account_session';
   static const _keyLanguage = 'app_language';
 
@@ -120,6 +122,12 @@ class SettingsStore {
       (await _read(_keyAiSummaryConsent)) == 'true';
 
   Future<bool> writeAiSummaryConsent() => _write(_keyAiSummaryConsent, 'true');
+
+  /// 요약에 남긴 평가(JSON). 다시 열었을 때 표시하고, 바꿀 때 같은 평가를 덮어쓰려고 둔다.
+  Future<String?> readSummaryVotes() => _read(_keySummaryVotes);
+
+  Future<bool> writeSummaryVotes(String value) =>
+      _write(_keySummaryVotes, value);
 
   /// 지도 동기화 계정의 세션(JSON). 로그아웃하면 지운다.
   Future<String?> readAccountSession() => _read(_keyAccountSession);

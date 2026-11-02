@@ -36,7 +36,7 @@ No account, login or setup is needed.
 - Threads public post pages (threads.com): the public, logged-out post and embed pages, read to show a post, its thread and its replies, and to find its media.
 - HikerAPI (hikerapi.com): a third-party data service used to look up public Instagram posts and profiles and get their media links. The app sends only the post code or username from the link the user entered. The API key is built into the app.
 - Threads and Instagram content delivery networks: photos and videos are loaded and downloaded directly from there.
-- AI summaries (optional): when the user agrees in an in-app consent dialog, the public text of a thread's posts and replies is sent through our summary server on Cloudflare Workers to Anthropic (Claude) or Poe to create a short summary. API keys stay on the server; no account information, photos or videos are sent.
+- AI summaries (optional): when the user agrees in an in-app consent dialog, the public text of a thread's posts and replies is sent through our summary server on Cloudflare Workers to Anthropic (Claude) or Poe (Google Gemini), picked at random for each post, to create a short summary. Users can rate a summary with thumbs up or down; the rating is stored on our server without account information. API keys stay on the server; no account information, photos or videos are sent.
 The app uses no authentication, payment, analytics or advertising services, and it collects no personal data.
 
 5. REGIONAL DIFFERENCES

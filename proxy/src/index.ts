@@ -14,15 +14,21 @@ installUsageMeter();
 /**
  * Townloader 요약 프록시.
  *
- * 앱은 API 키 없이 스레드 본문과 댓글을 보내고, 이 Worker 가 Claude Sonnet 을 불러
+ * 앱은 API 키 없이 스레드 본문과 댓글을 보내고, 이 Worker 가 Claude Sonnet 또는 Poe 의 Gemini Flash 를 불러
  * 요약을 돌려준다. 키는 Worker secret 에만 있다.
  *
  *   POST /summarize
  *   { "kind": "digest" | "thread" | "comments",
  *     "id": "<게시물 코드>", "lang": "ko" | "en",
  *     "posts": [{ "author": "...", "text": "...", "byAuthor": true }] }
- *   -> { "summary": "줄1\n줄2…(5줄 이하)", "comments": ["…"], "model": "...", "cached": false }
+ *   -> { "summary": "줄1\n줄2…(5줄 이하)", "comments": ["…"], "provider": "...", "model": "...", "cached": false }
  *   (comments 는 digest 일 때만. 예전 앱이 보내는 provider 는 무시한다.)
+ *   digest 는 A/B 테스트로 Claude 와 Poe 중 하나를 여기서 정한다. 예전 앱의 요약은 Claude 로 만든다.
+ *
+ *   POST /summary-feedback
+ *   { "provider": "...", "model": "...", "id": "...", "lang": "...",
+ *     "voteId": "<평가마다 만든 무작위 값>", "vote": "up" | "down" | "none" }
+ *   -> { "ok": true } — 집계는 scripts/summary-ab-stats.mjs.
  *
  *   POST /places — 저장한 글에서 지도에 찍을 장소를 찾는다. places.ts 참고.
  *
@@ -44,6 +50,8 @@ export interface Env extends PlacesEnv {
   APP_TOKEN: string;
   /** Poe 봇 이름. wrangler.toml 의 vars 에서 정한다. */
   POE_MODEL: string;
+  /** 요약 A/B 테스트에서 Claude 와 견주는 Poe 봇. */
+  SUMMARY_POE_MODEL: string;
   /** 하루에 IP 하나가 새로 만들 수 있는 요약 수. 캐시된 요약은 세지 않는다. */
   DAILY_LIMIT: string;
   SUMMARIES: KVNamespace;
@@ -53,9 +61,13 @@ export interface Env extends PlacesEnv {
   TTS_LIMITER: RateLimit;
   /** 대표 제목 만들기의 IP 별 분당 제한. */
   TITLE_LIMITER: RateLimit;
+  /** 요약 평가의 IP 별 분당 제한. */
+  FEEDBACK_LIMITER: RateLimit;
   /** 이 Worker 자신. 좌표 찾기를 따로 실행해 실행당 바깥 요청 한도를 나눠 쓴다. */
   SELF: Fetcher;
 }
+
+type Provider = "claude" | "poe";
 
 /**
  * digest: 본문 요약(5줄 이하) + 댓글 요점 목록을 한 번에 JSON 으로. 지금 앱이 쓴다.
@@ -76,7 +88,7 @@ interface SummarizeRequest {
   posts: PostInput[];
 }
 
-/** 요약은 Claude Sonnet 하나만 쓴다. 예전 앱이 provider 로 poe 를 보내도 Claude 로 만든다. */
+/** Claude 쪽 요약 모델. Poe 쪽은 wrangler.toml 의 SUMMARY_POE_MODEL. 예전 앱이 provider 로 poe 를 보내도 Claude 로 만든다. */
 const CLAUDE_MODEL = "claude-sonnet-5-5";
 const MAX_POSTS = 120;
 const MAX_TEXT = 2000;
@@ -101,7 +113,8 @@ async function handle(request: Request, env: Env, ctx: ExecutionContext): Promis
   const isGeocode = request.method === "POST" && url.pathname === "/internal/geocode";
   const isTts = request.method === "POST" && url.pathname === "/tts";
   const isTitle = request.method === "POST" && url.pathname === "/title";
-  if (!isSummary && !isHiker && !isPlaces && !isTts && !isTitle && !isGeocode) {
+  const isFeedback = request.method === "POST" && url.pathname === "/summary-feedback";
+  if (!isSummary && !isHiker && !isPlaces && !isTts && !isTitle && !isGeocode && !isFeedback) {
     return json({ error: "not_found" }, 404);
   }
   if (request.headers.get("x-app-token") !== env.APP_TOKEN) {
@@ -115,6 +128,7 @@ async function handle(request: Request, env: Env, ctx: ExecutionContext): Promis
   }
   if (isTts) return handleTts(request, env);
   if (isTitle) return handleTitle(request, env);
+  if (isFeedback) return handleFeedback(request, env);
 
   let body: SummarizeRequest;
   try {
@@ -124,7 +138,12 @@ async function handle(request: Request, env: Env, ctx: ExecutionContext): Promis
   }
 
   // 같은 글은 언어·종류별로 한 번만 요약한다. 모델을 바꿔서 키에 v2 를 붙였다.
-  const cacheKey = `summary:v2:${body.kind}:${body.lang}:${body.id}`;
+  // digest 는 공급자가 갈리고, A/B 이전에 Claude 로 만든 캐시가 섞이지 않도록 키를 따로 둔다.
+  const provider = body.kind === "digest" ? await assignProvider(body.id) : "claude";
+  const cacheKey =
+    body.kind === "digest"
+      ? `summary:v2:digest:${provider}:${body.lang}:${body.id}`
+      : `summary:v2:${body.kind}:${body.lang}:${body.id}`;
   const cached = await env.SUMMARIES.get(cacheKey, "json");
   if (cached) return json({ ...(cached as object), cached: true });
 
@@ -135,9 +154,11 @@ async function handle(request: Request, env: Env, ctx: ExecutionContext): Promis
 
   try {
     const result =
-      body.kind === "digest"
-        ? await digestWithClaude(env, body)
-        : await summarizeWithClaude(env, body);
+      body.kind !== "digest"
+        ? await summarizeWithClaude(env, body)
+        : provider === "poe"
+          ? await digestWithPoe(env, body)
+          : await digestWithClaude(env, body);
     await env.SUMMARIES.put(cacheKey, JSON.stringify(result), {
       expirationTtl: CACHE_TTL_SECONDS,
     });
@@ -215,7 +236,7 @@ interface SummaryResult {
   summary: string;
   /** digest 일 때만. 댓글 요점. */
   comments?: string[];
-  provider: "claude";
+  provider: Provider;
   model: string;
 }
 
@@ -271,6 +292,42 @@ async function digestWithClaude(env: Env, body: SummarizeRequest): Promise<Summa
   const text = response.content
     .flatMap((block) => (block.type === "text" ? [block.text] : []))
     .join("");
+  return { ...parseDigest(text), provider: "claude", model: response.model };
+}
+
+/** Claude 와 같은 지시로 Poe 봇을 부른다. JSON 스키마를 강제할 수 없어 형식을 글로 요구한다. */
+async function digestWithPoe(env: Env, body: SummarizeRequest): Promise<SummaryResult> {
+  // Poe 는 OpenAI 호환 chat/completions 로 봇을 부른다.
+  const response = await fetch("https://api.poe.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${env.POE_API_KEY}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      model: env.SUMMARY_POE_MODEL,
+      messages: [
+        {
+          role: "system",
+          content: `${DIGEST_PROMPT}\n\nReply with only a JSON object of the form {"summary": "...", "comments": ["..."]}, with no code fences and no other text.`,
+        },
+        { role: "user", content: threadPrompt(body) },
+      ],
+    }),
+  });
+  if (!response.ok) {
+    throw new Error(`poe ${response.status}`);
+  }
+  const data = (await response.json()) as {
+    choices?: { message?: { content?: string } }[];
+  };
+  const text = data.choices?.[0]?.message?.content ?? "";
+  // 봇이 JSON 앞뒤에 코드 펜스나 말을 붙여도 객체만 읽는다.
+  const json = text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1);
+  return { ...parseDigest(json), provider: "poe", model: env.SUMMARY_POE_MODEL };
+}
+
+function parseDigest(text: string): { summary: string; comments: string[] } {
   const parsed = JSON.parse(text) as { summary?: unknown; comments?: unknown };
   const lines = String(parsed.summary ?? "")
     .split("\n")
@@ -284,12 +341,63 @@ async function digestWithClaude(env: Env, body: SummarizeRequest): Promise<Summa
         .filter(Boolean)
         .slice(0, 4)
     : [];
-  return {
-    summary: lines.join("\n"),
-    comments,
-    provider: "claude",
-    model: response.model,
-  };
+  return { summary: lines.join("\n"), comments };
+}
+
+// ── 요약 A/B 테스트 ──────────────────────────────────────────────────────────
+
+/** 실험을 새로 시작할 때 올린다. 배정과 평가 키가 함께 바뀐다. */
+const AB_VERSION = "v1";
+const VOTE_TTL_SECONDS = 60 * 60 * 24 * 180;
+
+/**
+ * 글마다 공급자를 반반 정한다. 같은 글은 늘 같은 공급자로 가서 다시 열어도
+ * 요약이 바뀌지 않고, 사용자끼리 캐시를 나눠 쓰므로 비용도 한쪽만 든다.
+ */
+async function assignProvider(id: string): Promise<Provider> {
+  const input = new TextEncoder().encode(`summary-ab:${AB_VERSION}:${id}`);
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", input));
+  return digest[0]! % 2 === 0 ? "claude" : "poe";
+}
+
+async function handleFeedback(request: Request, env: Env): Promise<Response> {
+  const ip = request.headers.get("cf-connecting-ip") ?? "unknown";
+  const { success } = await env.FEEDBACK_LIMITER.limit({ key: ip });
+  if (!success) return json({ error: "rate_limited" }, 429);
+
+  let raw: Record<string, unknown>;
+  try {
+    raw = (await request.json()) as Record<string, unknown>;
+  } catch {
+    return json({ error: "bad_request" }, 400);
+  }
+  const { provider, id, voteId, vote } = raw;
+  if (
+    (provider !== "claude" && provider !== "poe") ||
+    typeof id !== "string" ||
+    !/^[\w-]{1,64}$/.test(id) ||
+    typeof voteId !== "string" ||
+    !/^[a-f0-9]{32}$/.test(voteId) ||
+    (vote !== "up" && vote !== "down" && vote !== "none")
+  ) {
+    return json({ error: "bad_request" }, 400);
+  }
+
+  // 평가마다 키가 하나라 바꾸면 덮어쓰고, 집계는 키 목록만 읽으면 된다.
+  const key = `vote:${AB_VERSION}:${provider}:${id}:${voteId}`;
+  if (vote === "none") {
+    await env.SUMMARIES.delete(key);
+  } else {
+    await env.SUMMARIES.put(key, vote, {
+      expirationTtl: VOTE_TTL_SECONDS,
+      metadata: {
+        vote,
+        model: String(raw.model ?? "").slice(0, 64),
+        lang: raw.lang === "ko" ? "ko" : "en",
+      },
+    });
+  }
+  return json({ ok: true });
 }
 
 // ── 장소 찾기 ─────────────────────────────────────────────────────────────────

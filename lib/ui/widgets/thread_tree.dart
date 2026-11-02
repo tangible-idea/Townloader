@@ -473,21 +473,13 @@ class _ThreadRow extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       if (isReply)
-                        Row(
-                          children: [
-                            _Avatar(post: post, size: 16),
-                            const SizedBox(width: 5),
-                            Flexible(
-                              child: Text(
-                                '@${post.authorName}',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: theme.textTheme.labelMedium?.copyWith(
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                          ],
+                        Text(
+                          '@${post.authorName}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.labelMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       Text(
                         caption ?? '',

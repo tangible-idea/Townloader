@@ -204,6 +204,15 @@ Widget _app(Widget child, {bool dark = false}) {
 
 /// 키체인·파일 접근 없이 동작하는 설정 저장소.
 class _MemoryStore extends SettingsStore {
+  @override
+  Future<String?> readLanguage() async => null;
+
+  @override
+  Future<String?> readSummaryVotes() async => null;
+
+  @override
+  Future<bool> writeSummaryVotes(String value) async => true;
+
   final _values = <String, String>{};
 
   @override

@@ -565,6 +565,15 @@ https://www.instagram.com/seoul__guide/
 
 class _FakeSettingsStore extends SettingsStore {
   @override
+  Future<String?> readLanguage() async => null;
+
+  @override
+  Future<String?> readSummaryVotes() async => null;
+
+  @override
+  Future<bool> writeSummaryVotes(String value) async => true;
+
+  @override
   Future<SettingsBackend> get backend async => SettingsBackend.keychain;
   @override
   Future<String?> readApiKey() async => null;

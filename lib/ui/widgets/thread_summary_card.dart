@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -11,7 +13,8 @@ import 'shimmer.dart';
 /// 함께 보여 준다. 받아 오면 줄마다 차례로 떠오른다.
 ///
 /// 처음에는 글을 외부 AI 로 보내도 되는지 동의를 받고, 동의한 뒤로는 열 때마다 바로
-/// 요약한다.
+/// 요약한다. 어느 모델이 요약할지는 A/B 테스트로 서버가 정하고, 평가가 모델 이름에
+/// 끌리지 않도록 화면에는 보여 주지 않는다.
 class ThreadSummaryCard extends StatefulWidget {
   const ThreadSummaryCard({super.key, required this.thread, this.client});
 
@@ -38,6 +41,10 @@ class _ThreadSummaryCardState extends State<ThreadSummaryCard>
   bool _loading = false;
   bool _requested = false;
   SummaryException? _error;
+
+  /// 평가를 보내는 동안 true. 그동안은 [_pendingVote] 를 먼저 보여 준다.
+  bool _voting = false;
+  SummaryVote? _pendingVote;
 
   /// 요청이 겹치면 마지막 것만 화면에 반영한다.
   int _request = 0;
@@ -106,7 +113,7 @@ class _ThreadSummaryCardState extends State<ThreadSummaryCard>
         context: context,
         builder: (context) => AlertDialog(
           title: Text(s.aiConsentTitle),
-          content: Text(s.aiConsentBody(summaryProviderLabel)),
+          content: Text(s.aiConsentBody),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
@@ -125,6 +132,94 @@ class _ThreadSummaryCardState extends State<ThreadSummaryCard>
     }
     setState(() => _requested = true);
     await _load();
+  }
+
+  /// 기기에 남기는 평가의 키. 공급자별로 따로 둔다.
+  String _voteKey(ThreadDigest digest) =>
+      '${digest.provider}:${SummaryClient.threadId(widget.thread)}';
+
+  static String _newVoteId() {
+    final random = Random.secure();
+    return List.generate(
+      16,
+      (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0'),
+    ).join();
+  }
+
+  /// 같은 쪽을 다시 누르면 평가를 취소한다. 실패하면 이전 표시로 돌아간다.
+  Future<void> _vote(ThreadDigest digest, SummaryVote tapped) async {
+    if (_voting) return;
+    final s = S.of(context);
+    final settings = context.read<SettingsController>();
+    final key = _voteKey(digest);
+    final previous = settings.summaryVote(key);
+    final next = previous?.vote == tapped ? null : tapped;
+    final voteId = previous?.voteId ?? _newVoteId();
+    setState(() {
+      _voting = true;
+      _pendingVote = next;
+    });
+    try {
+      await _client.sendFeedback(
+        widget.thread,
+        digest: digest,
+        isKo: s.isKo,
+        voteId: voteId,
+        vote: next,
+      );
+      await settings.setSummaryVote(key, vote: next, voteId: voteId);
+    } on SummaryException {
+      if (mounted) {
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          SnackBar(
+            content: Text(s.summaryVoteFailed),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+    if (mounted) setState(() => _voting = false);
+  }
+
+  Widget _voteRow(ThreadDigest digest) {
+    final s = S.of(context);
+    final theme = Theme.of(context);
+    final stored = context.watch<SettingsController>().summaryVote(
+      _voteKey(digest),
+    );
+    final vote = _voting ? _pendingVote : stored?.vote;
+
+    Widget button(SummaryVote value, IconData on, IconData off, String label) {
+      final selected = vote == value;
+      return IconButton(
+        tooltip: label,
+        visualDensity: VisualDensity.compact,
+        isSelected: selected,
+        color: selected
+            ? theme.colorScheme.primary
+            : theme.colorScheme.onSurfaceVariant,
+        onPressed: () => _vote(digest, value),
+        icon: Icon(selected ? on : off, size: 20),
+      );
+    }
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.end,
+      children: [
+        button(
+          SummaryVote.up,
+          Icons.thumb_up,
+          Icons.thumb_up_outlined,
+          s.summaryVoteUp,
+        ),
+        button(
+          SummaryVote.down,
+          Icons.thumb_down,
+          Icons.thumb_down_outlined,
+          s.summaryVoteDown,
+        ),
+      ],
+    );
   }
 
   @override
@@ -197,11 +292,11 @@ class _ThreadSummaryCardState extends State<ThreadSummaryCard>
   Widget _body(BuildContext context, ThreadDigest digest, TextStyle? muted) {
     final s = S.of(context);
     final theme = Theme.of(context);
-    // 본문 줄, 댓글 머리글, 댓글 요점, 안내 순서로 차례로 떠오른다.
+    // 본문 줄, 댓글 머리글, 댓글 요점, 안내, 평가 순서로 차례로 떠오른다.
     final count =
         digest.summary.length +
         (digest.comments.isEmpty ? 0 : 1 + digest.comments.length) +
-        1;
+        2;
     var index = 0;
     Widget reveal(Widget child) =>
         _Reveal(animation: _reveal, index: index++, count: count, child: child);
@@ -283,6 +378,7 @@ class _ThreadSummaryCardState extends State<ThreadSummaryCard>
             ),
           ),
         ),
+        reveal(_voteRow(digest)),
       ],
     );
   }

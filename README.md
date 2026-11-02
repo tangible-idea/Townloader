@@ -87,6 +87,9 @@ npx wrangler secret put HIKER_API_KEY      # ANTHROPIC_API_KEY, POE_API_KEY, APP
 npx wrangler deploy
 ```
 
+스레드 요약은 A/B 테스트입니다. Worker 가 글마다 Claude Sonnet 과 Poe 의 Gemini Flash 중 하나를 정하고, 앱은 어느 쪽인지 보여 주지
+않은 채 좋아요·싫어요를 받습니다. 결과는 `proxy/` 에서 `npm run ab-stats` 로 봅니다.
+
 Worker 는 앱이 쓰는 HikerAPI 경로만 통과시키고, IP 별 분당 요청 수를 제한합니다.
 응답 캐시(Cache API)는 Worker 에 사용자 도메인을 붙였을 때만 동작하고, workers.dev 주소에서는 꺼져 있습니다.
 

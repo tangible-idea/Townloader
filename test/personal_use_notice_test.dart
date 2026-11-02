@@ -7,6 +7,15 @@ import 'package:townloader/ui/widgets/personal_use_notice.dart';
 
 /// 동의 여부만 메모리에 들고 있는 저장소.
 class _AckStore extends SettingsStore {
+  @override
+  Future<String?> readLanguage() async => null;
+
+  @override
+  Future<String?> readSummaryVotes() async => null;
+
+  @override
+  Future<bool> writeSummaryVotes(String value) async => true;
+
   bool ack = false;
   int writes = 0;
 

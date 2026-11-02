@@ -143,11 +143,17 @@ class S {
       ? 'AI가 만든 요약이라 틀릴 수 있어요. 원문을 함께 확인하세요.'
       : 'Made by AI and may be wrong. Check the original posts.';
   String get aiConsentTitle => isKo ? 'AI로 요약할까요?' : 'Summarize with AI?';
-  String aiConsentBody(String provider) => isKo
-      ? '요약을 만들기 위해 이 스레드의 공개 글과 댓글 내용이 $provider 로 전송됩니다. '
+  String get aiConsentBody => isKo
+      ? '요약을 만들기 위해 이 스레드의 공개 글과 댓글 내용이 Anthropic(Claude) 또는 Poe(Google Gemini)로 전송됩니다. '
+            '요약 품질을 비교하기 위해 글마다 둘 중 하나가 무작위로 정해집니다. '
             '계정 정보나 사진은 보내지 않습니다.'
-      : "To create the summary, the public posts and replies in this thread are sent to $provider. "
+      : 'To create the summary, the public posts and replies in this thread are sent to Anthropic (Claude) or Poe (Google Gemini). '
+            'To compare summary quality, one of the two is picked at random for each post. '
             'No account information or photos are sent.';
+  String get summaryVoteUp => isKo ? '요약이 마음에 들어요' : 'Good summary';
+  String get summaryVoteDown => isKo ? '요약이 아쉬워요' : 'Bad summary';
+  String get summaryVoteFailed =>
+      isKo ? '평가를 보내지 못했습니다.' : "Couldn't send your rating.";
   String get aiConsentAgree => isKo ? '동의하고 요약' : 'Agree and summarize';
   String itemsCount(int count) => isKo ? '$count개 항목' : '$count items';
   String get downloadBtn => isKo ? '다운로드' : 'Download';

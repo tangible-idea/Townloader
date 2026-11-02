@@ -39,7 +39,7 @@ const usageServices = [
     'Claude Sonnet (요약)',
     'Claude Sonnet (summaries)',
   ),
-  // Poe 의 Claude Sonnet 봇(본문에서 장소 읽기). 1회 약 $0.015.
+  // Poe 챗봇. 본문 장소 읽기(Claude Sonnet 봇, 1회 약 $0.015)와 요약 A/B(Gemini Flash 봇, 그보다 저렴).
   UsageService('poe', 150, 'Poe 챗봇', 'Poe chat bot'),
   // Poe 의 ElevenLabs 음성(댓글 읽어 주기). 1회 약 $0.05.
   UsageService('poe_tts', 500, 'Poe 음성(ElevenLabs)', 'Poe voice (ElevenLabs)'),

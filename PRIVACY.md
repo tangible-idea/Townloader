@@ -1,6 +1,6 @@
 # Townloader Privacy Policy
 
-Effective date: September 23, 2026
+Effective date: October 31, 2026
 
 Townloader ("the app") does not collect personal information. This document explains
 what information the app handles and where.
@@ -45,11 +45,16 @@ its own privacy policy.
 
 **AI summaries.** When you agree to AI summaries, the public text of the thread's posts and
 replies (with each author's username) is sent to the developer's summary server on Cloudflare
-Workers, which forwards it to the AI service you chose: Anthropic (Claude) or Poe. No account
-information, photos or videos are sent. The summary server keeps the finished summary for 7 days
-so the same thread isn't summarized again, and keeps a count per IP address for about one day to
-limit daily use. It does not keep the post text itself. Anthropic and Poe handle the text under
-their own privacy policies.
+Workers, which forwards it to Anthropic (Claude) or Poe (Google Gemini). To compare summary quality, one of the
+two is picked at random for each post. No account information, photos or videos are sent. The
+summary server keeps the finished summary for 7 days so the same thread isn't summarized again,
+and keeps a count per IP address for about one day to limit daily use. It does not keep the post
+text itself. Anthropic, Poe and Google handle the text under their own privacy policies.
+
+If you rate a summary with thumbs up or down, the rating is sent to the summary server and kept
+for up to 180 days with the post code, the language and the AI model that wrote the summary. It is
+stored with a random value made for that rating, not with your account or IP address. Your own
+ratings are also kept on your device so you can change them.
 
 **Account and map sharing.** When you sign in with Google or Apple in Settings, the links you
 saved in the Links tab, their categories, the places found, and the post details the app loaded

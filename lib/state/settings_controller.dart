@@ -1,6 +1,9 @@
+import 'dart:convert';
+
 import 'package:flutter/widgets.dart';
 
 import '../config/app_config.dart';
+import '../data/summary_client.dart';
 import '../l10n/strings.dart';
 import '../services/settings_store.dart';
 
@@ -16,6 +19,9 @@ class SettingsController extends ChangeNotifier {
   bool _saveToGallery = true;
   bool _personalUseAck = false;
   bool _aiSummaryConsent = false;
+
+  /// 요약 평가. 값은 '[SummaryVote.name]:평가 ID'. 들어온 순서를 지킨다.
+  Map<String, String> _summaryVotes = {};
   String? _languageCode;
   bool _isLoaded = false;
   SettingsBackend _backend = SettingsBackend.keychain;
@@ -53,6 +59,7 @@ class SettingsController extends ChangeNotifier {
     _saveToGallery = await _store.readSaveToGallery();
     _personalUseAck = await _store.readPersonalUseAck();
     _aiSummaryConsent = await _store.readAiSummaryConsent();
+    _summaryVotes = _decodeVotes(await _store.readSummaryVotes());
     _languageCode = await _store.readLanguage();
     S.overrideLanguageCode = _languageCode;
     _isLoaded = true;
@@ -94,5 +101,46 @@ class SettingsController extends ChangeNotifier {
     _aiSummaryConsent = true;
     notifyListeners();
     await _store.writeAiSummaryConsent();
+  }
+
+  /// 키체인에 넣는 값이라 오래된 평가부터 지워 크기를 묶어 둔다.
+  static const _maxSummaryVotes = 300;
+
+  static Map<String, String> _decodeVotes(String? raw) {
+    if (raw == null) return {};
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map) {
+        return {
+          for (final entry in decoded.entries)
+            entry.key.toString(): entry.value.toString(),
+        };
+      }
+    } on FormatException {
+      // 깨진 값이면 빈 상태로 시작한다.
+    }
+    return {};
+  }
+
+  ({SummaryVote vote, String voteId})? summaryVote(String key) {
+    final parts = _summaryVotes[key]?.split(':');
+    if (parts == null || parts.length != 2) return null;
+    final vote = SummaryVote.values.asNameMap()[parts[0]];
+    return vote == null ? null : (vote: vote, voteId: parts[1]);
+  }
+
+  /// [vote] 가 null 이면 평가를 지운다.
+  Future<void> setSummaryVote(
+    String key, {
+    required SummaryVote? vote,
+    required String voteId,
+  }) async {
+    _summaryVotes.remove(key);
+    if (vote != null) _summaryVotes[key] = '${vote.name}:$voteId';
+    while (_summaryVotes.length > _maxSummaryVotes) {
+      _summaryVotes.remove(_summaryVotes.keys.first);
+    }
+    notifyListeners();
+    await _store.writeSummaryVotes(jsonEncode(_summaryVotes));
   }
 }

@@ -5,6 +5,15 @@ import 'package:townloader/state/settings_controller.dart';
 
 class _Store extends SettingsStore {
   _Store(this._key);
+  @override
+  Future<String?> readLanguage() async => null;
+
+  @override
+  Future<String?> readSummaryVotes() async => null;
+
+  @override
+  Future<bool> writeSummaryVotes(String value) async => true;
+
   final String? _key;
 
   @override

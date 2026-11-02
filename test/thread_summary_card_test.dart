@@ -38,6 +38,12 @@ class _ConsentStore extends SettingsStore {
   Future<String?> readLanguage() async => null;
 
   @override
+  Future<String?> readSummaryVotes() async => null;
+
+  @override
+  Future<bool> writeSummaryVotes(String value) async => true;
+
+  @override
   Future<bool> writeAiSummaryConsent() async {
     consent = true;
     return true;
@@ -77,19 +83,27 @@ final _thread = ThreadsThread(
 void main() {
   late List<Map<String, dynamic>> requests;
 
-  SummaryClient client({int status = 200}) => SummaryClient(
+  late List<Map<String, dynamic>> votes;
+
+  SummaryClient client({int status = 200, int voteStatus = 200}) => SummaryClient(
     baseUrl: 'https://proxy.test',
     appToken: 'token',
     httpClient: MockClient((request) async {
-      expect(request.url.toString(), 'https://proxy.test/summarize');
       expect(request.headers['x-app-token'], 'token');
       final body = jsonDecode(request.body) as Map<String, dynamic>;
+      if (request.url.toString() == 'https://proxy.test/summary-feedback') {
+        votes.add(body);
+        return http.Response('{}', voteStatus);
+      }
+      expect(request.url.toString(), 'https://proxy.test/summarize');
       requests.add(body);
       if (status != 200) return http.Response('{}', status);
       return http.Response(
         jsonEncode({
           'summary': '첫 줄\n둘째 줄\n셋째\n넷째\n다섯째\n여섯째',
           'comments': ['공감이 많다', '질문이 있다'],
+          'provider': 'poe',
+          'model': 'bot',
         }),
         200,
         headers: {'content-type': 'application/json; charset=utf-8'},
@@ -101,6 +115,7 @@ void main() {
     WidgetTester tester, {
     required bool consent,
     int status = 200,
+    int voteStatus = 200,
   }) async {
     final settings = SettingsController(_ConsentStore(consent: consent));
     await settings.load();
@@ -112,7 +127,7 @@ void main() {
             body: SingleChildScrollView(
               child: ThreadSummaryCard(
                 thread: _thread,
-                client: client(status: status),
+                client: client(status: status, voteStatus: voteStatus),
               ),
             ),
           ),
@@ -123,7 +138,10 @@ void main() {
     return settings;
   }
 
-  setUp(() => requests = []);
+  setUp(() {
+    requests = [];
+    votes = [];
+  });
 
   testWidgets('동의 전에는 아무것도 보내지 않고, 동의하면 요약을 불러온다', (tester) async {
     final settings = await pump(tester, consent: false);
@@ -157,8 +175,46 @@ void main() {
     expect(find.text('Reply summary'), findsOneWidget);
     expect(find.text('공감이 많다'), findsOneWidget);
     expect(find.text('질문이 있다'), findsOneWidget);
-    // Claude/Poe 를 고르는 단추는 없다.
+    // 어느 모델인지 보여 주지 않고, 고를 수도 없다.
     expect(find.text('Poe'), findsNothing);
+    expect(find.text('Claude'), findsNothing);
+  });
+
+  testWidgets('평가는 받은 공급자로 보내고, 바꾸면 덮어쓰고, 다시 누르면 취소한다', (tester) async {
+    final settings = await pump(tester, consent: true);
+    const key = 'poe:threads-Root1';
+
+    await tester.tap(find.byIcon(Icons.thumb_up_outlined));
+    await tester.pumpAndSettle();
+    expect(find.byIcon(Icons.thumb_up), findsOneWidget);
+    expect(settings.summaryVote(key)?.vote, SummaryVote.up);
+    expect(votes.single['provider'], 'poe');
+    expect(votes.single['model'], 'bot');
+    expect(votes.single['vote'], 'up');
+    expect(votes.single['voteId'], matches(RegExp(r'^[a-f0-9]{32}$')));
+
+    await tester.tap(find.byIcon(Icons.thumb_down_outlined));
+    await tester.pumpAndSettle();
+    expect(find.byIcon(Icons.thumb_down), findsOneWidget);
+    expect(find.byIcon(Icons.thumb_up), findsNothing);
+    expect(votes[1]['vote'], 'down');
+    expect(votes[1]['voteId'], votes[0]['voteId']);
+
+    await tester.tap(find.byIcon(Icons.thumb_down));
+    await tester.pumpAndSettle();
+    expect(find.byIcon(Icons.thumb_down), findsNothing);
+    expect(votes[2]['vote'], 'none');
+    expect(votes[2]['voteId'], votes[0]['voteId']);
+    expect(settings.summaryVote(key), isNull);
+  });
+
+  testWidgets('평가를 보내지 못하면 표시를 되돌린다', (tester) async {
+    final settings = await pump(tester, consent: true, voteStatus: 500);
+
+    await tester.tap(find.byIcon(Icons.thumb_up_outlined));
+    await tester.pumpAndSettle();
+    expect(find.byIcon(Icons.thumb_up), findsNothing);
+    expect(settings.summaryVote('poe:threads-Root1'), isNull);
   });
 
   testWidgets('하루 제한에 걸리면 다시 시도 버튼 없이 안내한다', (tester) async {
