@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Townloader: 인스타 글 하나가 지도가 돼요</title>
+<meta name="description" content="Townloader는 인스타그램 글에서 장소를 찾아 지도에 모아 주는 iPhone 앱이에요. 긴 Threads 글은 한 화면에서 읽고, 사진과 영상은 원본 화질로 보관해요.">
+<link rel="canonical" href="https://townloader.web.app/">
+<meta name="theme-color" content="#ffffff">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Townloader">
+<meta property="og:locale" content="ko_KR">
+<meta property="og:url" content="https://townloader.web.app/">
+<meta property="og:title" content="Townloader: 인스타 글 하나가 지도가 돼요">
+<meta property="og:description" content="링크를 붙여넣으면 캡션과 사진 속 글자에서 장소를 찾아 지도에 모아 줘요.">
+<meta property="og:image" content="https://townloader.web.app/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Townloader: 인스타 글 하나가 지도가 돼요">
+<meta name="twitter:description" content="링크를 붙여넣으면 캡션과 사진 속 글자에서 장소를 찾아 지도에 모아 줘요.">
+<meta name="twitter:image" content="https://townloader.web.app/og.png">
+<link rel="icon" href="/favicon.png" type="image/png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="preload" href="/fonts/pretendard-800.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/pretendard-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/site.css">
+<script>
+  // 모션이 켜진 방문자만 등장 전 상태로 숨긴다. 스크립트가 늦거나 실패하면 3초 뒤 모두 보인다.
+  if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    document.documentElement.classList.add('js-motion');
+    setTimeout(function () { document.documentElement.classList.add('intro-done'); }, 3000);
+  }
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "MobileApplication",
+  "name": "Townloader",
+  "operatingSystem": "iOS",
+  "applicationCategory": "TravelApplication",
+  "inLanguage": ["ko", "en"],
+  "url": "https://townloader.web.app/",
+  "description": "인스타그램 글에서 장소를 찾아 지도에 모아 주고, Threads 글을 한 화면에서 읽고, 사진과 영상을 원본 화질로 보관하는 앱",
+  "publisher": { "@type": "Organization", "name": "Tangible Idea" }
+}
+</script>
+</head>
+<body>
+<a class="skip" href="#main">본문으로 건너뛰기</a>
+
+<header class="bar" data-bar>
+  <a class="bar__brand" href="/" aria-label="Townloader 홈">
+    <img src="/media/logo.png" alt="" width="32" height="29">
+    <span>Townloader</span>
+  </a>
+  <nav class="bar__nav" aria-label="주요 메뉴">
+    <a class="navlink" href="#how"><span>작동 방식</span></a>
+    <a class="navlink" href="#features"><span>기능</span></a>
+    <a class="navlink" href="/support"><span>지원</span></a>
+  </nav>
+</header>
+
+<main id="main" tabindex="-1">
+
+  <section class="hero" aria-labelledby="hero-title">
+    <div class="hero__copy">
+      <h1 id="hero-title" class="display">
+        <span class="line"><span class="line__in" data-intro>인스타 글 하나가</span></span>
+        <span class="line"><span class="line__in" data-intro>지도가 돼요</span></span>
+      </h1>
+      <p class="hero__lede">링크를 붙여넣으면 캡션과 사진 속 글자에서 장소를 찾아 지도에 모아 줘요. 긴 Threads 글은 한 화면에서 끝까지 읽고, 사진과 영상은 원본 화질로 보관하세요.</p>
+      <div class="hero__actions" data-intro-fade>
+        <button class="btn" type="button" data-sound-play>
+          <span class="btn__label"><span data-label="소리 켜고 영상 보기">소리 켜고 영상 보기</span></span>
+        </button>
+        <a class="textlink" href="#how">글이 지도가 되는 과정</a>
+      </div>
+      <p class="hero__status" data-intro-fade>iPhone 앱, App Store 출시 준비 중</p>
+    </div>
+
+    <figure class="film" data-intro-film>
+      <div class="film__frame">
+        <video class="film__video" data-film
+          src="/media/townloader-promo.mp4" poster="/media/promo-poster.jpg"
+          width="720" height="1280" autoplay muted loop playsinline preload="metadata"
+          aria-label="Townloader 홍보 영상"></video>
+        <div class="film__controls">
+          <button class="chipbtn" type="button" data-film-toggle aria-pressed="false">일시정지</button>
+          <button class="chipbtn" type="button" data-film-sound aria-pressed="false">소리 켜기</button>
+        </div>
+      </div>
+      <figcaption class="film__cap">39초 영상. 여자친구의 "아무거나"에 남자친구가 인스타 글 하나로 데이트 코스 지도를 만들어 보내요.</figcaption>
+    </figure>
+  </section>
+
+  <section class="how" id="how" aria-labelledby="how-title" data-how>
+    <div class="how__stage">
+      <div class="how__text">
+        <h2 id="how-title" class="h2">캡션을 읽고<br>장소를 꽂아요</h2>
+        <article class="post" aria-label="예시 게시물">
+          <header class="post__head">
+            <span class="post__avatar" aria-hidden="true">M</span>
+            <span class="post__who"><b>@marks.photo</b><span>제주 3박 4일</span></span>
+          </header>
+          <p class="post__caption">첫날은 <mark data-step="0">협재해수욕장</mark>에서 물놀이하고 <mark data-step="1">애월</mark> 카페거리에서 해 지는 걸 봤어요. 둘째 날은 새벽에 <mark data-step="2">한라산</mark> 영실 코스를 올랐다가 내려와서 <mark data-step="3">천지연폭포</mark>까지 걸었고요. 마지막 날은 <mark data-step="4">성산일출봉</mark>에서 해 뜨는 걸 보고 배 타고 <mark data-step="5">우도</mark>를 한 바퀴 돌았어요.</p>
+          <footer class="post__foot">
+            <p class="count" aria-live="polite"><span>장소</span> <b data-count>6</b><span>곳</span></p>
+            <ul class="chips" aria-label="찾은 장소">
+              <li data-step="0">협재해수욕장</li>
+              <li data-step="1">애월</li>
+              <li data-step="2">한라산</li>
+              <li data-step="3">천지연폭포</li>
+              <li data-step="4">성산일출봉</li>
+              <li data-step="5">우도</li>
+            </ul>
+          </footer>
+        </article>
+      </div>
+
+      <figure class="map" aria-label="찾은 장소 6곳이 표시된 제주 지도 그림">
+        <svg class="map__svg" viewBox="28 56 784 290" aria-hidden="true" focusable="false">
+          <defs><clipPath id="jeju-clip"><path d="M47.1 260.3C47.6 252.8 54.2 242.3 60.8 233.9C67.3 225.4 76.3 217.0 86.2 209.3C96.0 201.7 107.9 194.6 119.8 188.0C131.7 181.4 143.8 176.3 157.7 169.7C171.5 163.0 187.5 154.0 202.8 148.0C218.2 141.9 233.7 138.9 249.6 133.6C265.5 128.4 281.3 121.2 298.1 116.6C315.0 112.1 333.6 109.8 350.6 106.2C367.7 102.7 385.1 98.1 400.4 95.5C415.7 92.9 428.8 91.8 442.4 90.7C455.9 89.6 465.8 89.1 481.8 88.9C497.8 88.8 520.3 88.7 538.2 90.1C556.1 91.5 572.3 95.2 589.0 97.6C605.7 100.0 623.1 102.4 638.4 104.4C653.7 106.4 668.4 107.8 680.7 109.4C693.0 110.9 703.7 114.0 712.2 113.8C720.8 113.7 725.0 108.2 731.8 108.5C738.6 108.8 748.4 112.0 752.9 115.6C757.4 119.3 759.6 125.5 759.1 130.4C758.5 135.3 754.4 141.2 749.8 145.0C745.2 148.8 738.0 149.1 731.5 153.0C725.0 156.9 717.6 161.9 710.7 168.4C703.8 174.9 698.4 184.8 690.1 191.9C681.9 199.0 672.4 204.6 661.1 210.9C649.9 217.3 636.0 223.4 622.4 230.1C608.8 236.8 595.3 245.0 579.6 251.3C563.9 257.6 545.2 262.4 528.3 267.9C511.3 273.5 492.2 280.1 477.7 284.8C463.2 289.6 454.0 294.0 441.3 296.4C428.7 298.7 416.9 298.1 401.9 299.1C386.8 300.1 367.9 301.4 351.0 302.5C334.1 303.6 315.3 305.3 300.4 305.8C285.5 306.2 275.1 306.1 261.7 305.2C248.3 304.4 233.9 301.4 219.9 300.8C205.9 300.3 191.0 300.6 177.8 302.0C164.6 303.4 151.8 310.0 140.7 309.5C129.7 309.0 121.8 301.9 111.6 298.9C101.4 296.0 88.4 295.2 79.4 291.8C70.4 288.5 63.0 284.1 57.6 278.8C52.2 273.5 46.6 267.7 47.1 260.3Z"/></clipPath></defs>
+          <g class="map__land">
+            <path d="M47.1 260.3C47.6 252.8 54.2 242.3 60.8 233.9C67.3 225.4 76.3 217.0 86.2 209.3C96.0 201.7 107.9 194.6 119.8 188.0C131.7 181.4 143.8 176.3 157.7 169.7C171.5 163.0 187.5 154.0 202.8 148.0C218.2 141.9 233.7 138.9 249.6 133.6C265.5 128.4 281.3 121.2 298.1 116.6C315.0 112.1 333.6 109.8 350.6 106.2C367.7 102.7 385.1 98.1 400.4 95.5C415.7 92.9 428.8 91.8 442.4 90.7C455.9 89.6 465.8 89.1 481.8 88.9C497.8 88.8 520.3 88.7 538.2 90.1C556.1 91.5 572.3 95.2 589.0 97.6C605.7 100.0 623.1 102.4 638.4 104.4C653.7 106.4 668.4 107.8 680.7 109.4C693.0 110.9 703.7 114.0 712.2 113.8C720.8 113.7 725.0 108.2 731.8 108.5C738.6 108.8 748.4 112.0 752.9 115.6C757.4 119.3 759.6 125.5 759.1 130.4C758.5 135.3 754.4 141.2 749.8 145.0C745.2 148.8 738.0 149.1 731.5 153.0C725.0 156.9 717.6 161.9 710.7 168.4C703.8 174.9 698.4 184.8 690.1 191.9C681.9 199.0 672.4 204.6 661.1 210.9C649.9 217.3 636.0 223.4 622.4 230.1C608.8 236.8 595.3 245.0 579.6 251.3C563.9 257.6 545.2 262.4 528.3 267.9C511.3 273.5 492.2 280.1 477.7 284.8C463.2 289.6 454.0 294.0 441.3 296.4C428.7 298.7 416.9 298.1 401.9 299.1C386.8 300.1 367.9 301.4 351.0 302.5C334.1 303.6 315.3 305.3 300.4 305.8C285.5 306.2 275.1 306.1 261.7 305.2C248.3 304.4 233.9 301.4 219.9 300.8C205.9 300.3 191.0 300.6 177.8 302.0C164.6 303.4 151.8 310.0 140.7 309.5C129.7 309.0 121.8 301.9 111.6 298.9C101.4 296.0 88.4 295.2 79.4 291.8C70.4 288.5 63.0 284.1 57.6 278.8C52.2 273.5 46.6 267.7 47.1 260.3Z"/>
+            <ellipse cx="782" cy="96" rx="15" ry="10"/>
+          </g>
+          <g class="map__contour" clip-path="url(#jeju-clip)">
+            <path d="M540.7 181.1C541.7 190.5 539.4 201.2 529.8 210.6C520.3 220.0 501.8 229.2 483.5 237.7C465.1 246.1 443.9 255.9 419.6 261.4C395.3 266.8 361.9 271.0 337.6 270.3C313.3 269.6 292.4 262.2 273.6 257.2C254.9 252.2 236.5 247.3 225.0 240.2C213.4 233.2 205.5 223.9 204.4 214.8C203.3 205.7 209.2 195.3 218.2 185.7C227.2 176.2 240.5 165.7 258.5 157.6C276.5 149.5 302.1 141.3 326.3 137.1C350.4 132.9 379.6 131.8 403.2 132.3C426.9 132.8 448.1 136.4 468.2 140.1C488.4 143.7 512.2 147.4 524.3 154.3C536.4 161.1 539.8 171.7 540.7 181.1Z"/>
+            <path d="M479.2 187.2C480.2 193.5 478.6 200.5 473.6 207.2C468.5 213.9 460.9 222.0 448.9 227.4C436.9 232.7 417.7 236.8 401.5 239.5C385.3 242.1 367.8 243.2 351.9 243.2C336.0 243.3 319.2 242.4 306.0 239.8C292.8 237.3 278.5 233.0 272.6 227.7C266.6 222.4 271.6 214.8 270.4 208.2C269.1 201.6 260.6 194.8 265.1 188.3C269.5 181.8 284.3 174.9 297.1 169.4C309.9 163.9 325.7 158.5 341.6 155.3C357.6 152.2 377.4 150.3 393.0 150.7C408.7 151.1 423.3 154.5 435.7 157.6C448.0 160.8 459.9 164.6 467.1 169.6C474.4 174.5 478.1 181.0 479.2 187.2Z"/>
+            <path d="M421.5 193.0C421.4 196.4 425.6 199.8 422.7 202.8C419.8 205.7 410.4 208.3 404.1 210.5C397.8 212.8 391.8 215.0 384.9 216.4C378.0 217.8 369.8 219.1 362.8 219.2C355.7 219.3 348.5 218.3 342.4 217.1C336.2 215.9 329.3 214.3 326.1 211.9C322.8 209.5 322.8 205.9 323.1 202.9C323.3 199.9 324.9 196.8 327.6 193.8C330.3 190.9 334.0 187.6 339.2 185.2C344.5 182.8 352.0 181.0 359.0 179.5C366.1 177.9 374.6 176.1 381.5 176.1C388.5 176.1 393.9 178.4 400.8 179.5C407.7 180.6 419.6 180.3 423.0 182.6C426.5 184.8 421.5 189.7 421.5 193.0Z"/>
+          </g>
+          <g class="map__route">
+            <path data-seg="0" pathLength="1" d="M96 210Q150 168 215 150"/>
+            <path data-seg="1" pathLength="1" d="M215 150Q294 124 372 198"/>
+            <path data-seg="2" pathLength="1" d="M372 198Q421 239 470 280"/>
+            <path data-seg="3" pathLength="1" d="M470 280Q660 236 748 126"/>
+            <path data-seg="4" pathLength="1" d="M748 126Q770 102 782 96"/>
+          </g>
+        </svg>
+        <span class="pin" data-step="0" style="--x:8.67%;--y:53.10%"><i></i><span class="pin__label">협재해수욕장</span></span>
+        <span class="pin" data-step="1" style="--x:23.85%;--y:32.41%"><i></i><span class="pin__label">애월</span></span>
+        <span class="pin" data-step="2" style="--x:43.88%;--y:48.97%"><i></i><span class="pin__label">한라산</span></span>
+        <span class="pin pin--below" data-step="3" style="--x:56.38%;--y:77.24%"><i></i><span class="pin__label">천지연폭포</span></span>
+        <span class="pin pin--below-left" data-step="4" style="--x:91.84%;--y:24.14%"><i></i><span class="pin__label">성산일출봉</span></span>
+        <span class="pin pin--left" data-step="5" style="--x:96.17%;--y:13.79%"><i></i><span class="pin__label">우도</span></span>
+        <span class="map__ring" aria-hidden="true" data-ring></span>
+      </figure>
+    </div>
+  </section>
+
+  <section class="features" id="features" aria-labelledby="features-title" data-features>
+    <h2 id="features-title" class="h2 features__title">저장한 글을<br>다시 쓰는 방법</h2>
+    <ul class="index">
+      <li class="row" data-shot="/media/screen-places.webp">
+        <h3 class="row__title"><span>글 속 장소 찾기</span></h3>
+        <p class="row__text">Instagram 링크를 붙여넣으면 캡션과 사진 속 글자에서 장소를 찾고, 글마다 짧은 제목을 지어 줘요.</p>
+        <img class="row__thumb" src="/media/screen-places.webp" alt="링크 탭에 제주 여행 글 세 개와 각 글에서 찾은 장소가 정리된 화면" width="560" height="1222" loading="lazy" decoding="async">
+      </li>
+      <li class="row" data-shot="/media/screen-map.webp">
+        <h3 class="row__title"><span>지도 한 장으로 공유</span></h3>
+        <p class="row__text">카테고리마다 장소를 지도에 모아요. 로그인하면 지도를 링크로 보내고, 받은 사람은 브라우저에서 바로 열어요.</p>
+        <img class="row__thumb" src="/media/screen-map.webp" alt="제주 지도 위에 성산일출봉과 협재해수욕장 사진 말풍선이 떠 있는 화면" width="560" height="1222" loading="lazy" decoding="async">
+      </li>
+      <li class="row" data-shot="/media/screen-thread.webp">
+        <h3 class="row__title"><span>나뉜 스레드를 끝까지</span></h3>
+        <p class="row__text">1/17, 2/17로 이어진 Threads 글을 쓴 순서대로 공개 댓글과 함께 모아요. 원하면 AI가 짧게 요약해 줘요.</p>
+        <img class="row__thumb" src="/media/screen-thread.webp" alt="여러 편으로 나뉜 Threads 글이 순서대로 한 화면에 모인 읽기 화면" width="560" height="1222" loading="lazy" decoding="async">
+      </li>
+      <li class="row" data-shot="/media/screen-link.webp">
+        <h3 class="row__title"><span>원본 화질로 보관</span></h3>
+        <p class="row__text">사진과 영상을 크게 보고 원하는 것만 골라요. 사진 앱의 Townloader 앨범이나 파일 앱에 저장돼요.</p>
+        <img class="row__thumb" src="/media/screen-link.webp" alt="여러 장짜리 게시물의 사진을 미리 보고 전체 받기 버튼이 있는 화면" width="560" height="1222" loading="lazy" decoding="async">
+      </li>
+      <li class="row" data-shot="/media/screen-profile.webp">
+        <h3 class="row__title"><span>공개 계정 둘러보기</span></h3>
+        <p class="row__text">공개 계정의 게시물, 릴스, 스토리를 한곳에서 보고 필요한 것만 저장해요.</p>
+        <img class="row__thumb" src="/media/screen-profile.webp" alt="공개 계정의 게시물이 격자로 보이는 프로필 화면" width="560" height="1222" loading="lazy" decoding="async">
+      </li>
+    </ul>
+    <div class="preview" aria-hidden="true" data-preview><img alt="" width="560" height="1222"></div>
+  </section>
+
+  <section class="statement" aria-labelledby="statement-title">
+    <h2 id="statement-title" class="statement__line">데이트 코스 짜다<br>싸우지 말고.</h2>
+    <p class="statement__text">계정 없이도 쓸 수 있어요. Apple이나 Google로 로그인하면 저장한 링크와 장소를 다른 기기에서도 이어서 쓸 수 있고, 계정은 설정에서 언제든 지울 수 있어요.</p>
+  </section>
+
+</main>
+
+<footer class="foot">
+  <p class="foot__mark" aria-hidden="true">Townloader</p>
+  <div class="foot__grid">
+    <nav class="foot__links" aria-label="도움말과 정책">
+      <a href="/support"><span>고객 지원</span></a>
+      <a href="/privacy/ko"><span>개인정보처리방침</span></a>
+      <a href="/privacy" lang="en"><span>Privacy Policy</span></a>
+      <a href="https://github.com/tangible-idea/Tandi/issues/new"><span>문의하기</span></a>
+    </nav>
+    <p class="foot__fine">저장한 콘텐츠의 저작권은 원저작자에게 있어요. Townloader는 Instagram, Threads, Meta와 제휴하거나 승인받은 앱이 아닙니다.</p>
+    <p class="foot__fine">© 2026 Tangible Idea</p>
+  </div>
+</footer>
+
+<script src="/vendor/gsap.min.js" defer></script>
+<script src="/vendor/ScrollTrigger.min.js" defer></script>
+<script src="/vendor/lenis.min.js" defer></script>
+<script src="/main.js" defer></script>
+</body>
+</html>

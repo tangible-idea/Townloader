@@ -46,3 +46,7 @@ app.*.map.json
 
 # 빌드에 심는 비밀값. 예시 파일(.env.json.example)만 커밋한다.
 .env.json
+
+# Firebase Hosting build output
+site/public/
+.firebase/

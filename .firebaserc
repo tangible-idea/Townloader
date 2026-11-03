@@ -1,0 +1,12 @@
+{
+  "projects": {
+    "default": "townloader-tangible"
+  },
+  "targets": {
+    "townloader-tangible": {
+      "hosting": {
+        "townloader": ["townloader"]
+      }
+    }
+  }
+}
