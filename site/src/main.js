@@ -49,12 +49,58 @@
     const tl = gsap.timeline({ defaults: { ease }, onComplete: () => root.classList.add('intro-done') });
     // CSS가 숨김용 translateY를 걸어 두므로 y도 0으로 함께 지정한다 (GSAP이 그 값을 y로 읽는다).
     tl.fromTo('.hero .line__in', { y: 0, yPercent: 108 }, { y: 0, yPercent: 0, duration: 1.1, stagger: 0.08 })
-      .fromTo('[data-intro-fade]', { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.9, stagger: 0.06 }, 0.35)
-      .fromTo('[data-intro-film]', { opacity: 0, y: 40 }, { opacity: 1, y: 0, duration: 1.1 }, 0.2);
+      .fromTo('[data-intro-film]', { y: 40 }, { y: 0, duration: 1.1 }, 0.2);
     // CSS 숨김과 GSAP 시작값이 겹치는 동안 깜빡이지 않도록 클래스는 타임라인 첫 프레임 이후에 뗀다.
     gsap.delayedCall(0.05, () => root.classList.add('intro-done'));
   } else {
     root.classList.add('intro-done');
+  }
+
+  /* ---------- 히어로 설명: 링크 → AI → 네 갈래 결과를 차례로 보여 주는 루프 ---------- */
+  const explain = document.querySelector('[data-explain]');
+  if (explain && motion && ST) {
+    const q = (sel) => explain.querySelector(sel);
+    const nodes = [...explain.querySelectorAll('.node')];
+    const outs = [...explain.querySelectorAll('.out')];
+    const branches = [...explain.querySelectorAll('.branch path')];
+    const conn = q('.conn');
+    const branchVisible = () => getComputedStyle(q('.branch')).display !== 'none';
+    const setOn = (list, i) => list.forEach((el, k) => el.classList.toggle('is-on', k === i));
+    const loop = gsap.timeline({ repeat: -1, repeatDelay: 0.6, defaults: { ease }, paused: true });
+    loop
+      .set(conn, { '--dot': 0 })
+      .set(branches, { strokeDashoffset: 1 })
+      .set(outs, { opacity: 0.35 })
+      .set(q('.ic-hl'), { scaleX: 0, transformOrigin: '0% 50%' })
+      .set(q('.ic-scan'), { y: 0, opacity: 0 })
+      .set(q('.ic-pin'), { y: -12, opacity: 0 })
+      .set(q('.ic-sum'), { scaleX: 0, transformOrigin: '0% 50%' })
+      .set(q('.ic-star'), { scale: 0.4, transformOrigin: '50% 50%' })
+      .call(() => { setOn(nodes, 0); setOn(outs, -1); })
+      .fromTo(q('.ic-link-a'), { x: -3 }, { x: 0, duration: 0.6, ease: 'back.out(2.2)' }, 0)
+      .fromTo(q('.ic-link-b'), { x: 3 }, { x: 0, duration: 0.6, ease: 'back.out(2.2)' }, 0)
+      .fromTo(q('.ic-link-bar'), { scaleX: 0, transformOrigin: '50% 50%' }, { scaleX: 1, duration: 0.35 }, 0.25)
+      .to(conn, { '--dot': 1, duration: 0.7, ease: 'power2.inOut' }, 0.7)
+      .call(() => setOn(nodes, 1), null, 1.35)
+      .to(q('.ic-scan'), { opacity: 1, duration: 0.15 }, 1.35)
+      .to(q('.ic-scan'), { y: 28, duration: 0.8, ease: 'power1.inOut' }, 1.35)
+      .to(q('.ic-scan'), { opacity: 0, duration: 0.2 }, 2.0)
+      .to(q('.ic-hl'), { scaleX: 1, duration: 0.45 }, 1.75);
+    // 갈래가 하나씩 뻗고, 닿은 결과가 켜진다 (폰에서는 갈래 선 없이 결과만 차례로).
+    const icons = [
+      () => gsap.to(q('.ic-pin'), { y: 0, opacity: 1, duration: 0.6, ease: 'back.out(2.4)' }),
+      () => gsap.fromTo(q('.ic-arrow'), { y: -6 }, { y: 0, duration: 0.6, ease: 'back.out(2)' }),
+      () => gsap.to(q('.ic-sum'), { scaleX: 1, duration: 0.5, ease }),
+      () => gsap.to(q('.ic-star'), { scale: 1, duration: 0.6, ease: 'back.out(2.6)' }),
+    ];
+    outs.forEach((out, i) => {
+      const at = 2.25 + i * 0.45;
+      loop.to(branches[i], { strokeDashoffset: 0, duration: 0.45, ease: 'power2.out' }, at)
+        .to(out, { opacity: 1, duration: 0.3 }, at + (branchVisible() ? 0.3 : 0))
+        .call(() => { setOn(outs, i); icons[i](); }, null, at + 0.3);
+    });
+    loop.call(() => { setOn(nodes, -1); setOn(outs, -1); }, null, 5.6).to({}, { duration: 0.01 }, 5.8);
+    ST.create({ trigger: explain, start: 'top bottom', end: 'bottom top', onToggle: (self) => (self.isActive ? loop.play() : loop.pause()) });
   }
 
   /* ---------- how: 진행도 하나로 캡션, 칩, 핀, 코스, 개수를 함께 움직인다 ---------- */
@@ -171,7 +217,7 @@
     };
     toggle.addEventListener('click', () => { video.paused ? video.play() : video.pause(); });
     sound.addEventListener('click', () => { video.muted = !video.muted; if (!video.muted && video.paused) video.play(); sync(); });
-    big.addEventListener('click', () => {
+    if (big) big.addEventListener('click', () => {
       video.muted = false; video.currentTime = 0; video.play(); sync();
       video.closest('.film').scrollIntoView({ block: 'nearest', behavior: reduce ? 'auto' : 'smooth' });
     });

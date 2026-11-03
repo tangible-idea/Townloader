@@ -44,7 +44,7 @@ Screenshot:  캡션 6곳이 칠해지고 제주 지도에 핀 6개와 점선 코
   - 로고 그라데이션은 로고에만 쓰고 다른 곳에는 번지지 않는다
 - Type: Pretendard 하나 (Regular 400, SemiBold 600, ExtraBold 800). 디스플레이는 ExtraBold, 자간 -0.045em, 행간 1.02. 본문 17px/1.6. 숫자는 tabular
   - 빌드 때 페이지에 쓰인 글자만 남겨 서브셋한다 (`scripts/subset_fonts.py`)
-- Grid: 12열, 여백 = gutter `clamp(16px, 3vw, 40px)`. 세로 기준선 1열, 7열 두 개에 모든 블록을 건다
+- Grid: 12열, 여백 = gutter `clamp(20px, 4.2vw, 64px)`. 세로 기준선 1열, 7열 두 개에 모든 블록을 건다
 - Shape: 미디어와 카드 반경 `22px` 하나, 버튼은 pill
 - Motion: ease `expo.out` 계열 하나(`cubic-bezier(.16,1,.3,1)`), 핀만 `back.out(1.6)`. 큰 것 0.9s, 작은 것 0.35s, 스태거 40ms
 - 섹션 구성 (패밀리 중복 없음)

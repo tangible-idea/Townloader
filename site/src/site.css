@@ -14,7 +14,7 @@
   --accent-ink: #c2410c;
   --accent-soft: rgba(232, 89, 12, 0.22);
 
-  --gutter: clamp(16px, 3vw, 40px);
+  --gutter: clamp(20px, 4.2vw, 64px);
   --radius: 22px;
   --ease: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-pin: cubic-bezier(0.34, 1.7, 0.64, 1);
@@ -146,8 +146,64 @@ html.bar-away .bar { translate: 0 -105%; }
 }
 .line { display: block; overflow: clip; padding-bottom: 0.06em; margin-bottom: -0.06em; }
 .line__in { display: inline-block; }
+.hero .display { font-size: clamp(2.2rem, 0.6rem + 5vw, 5.6rem); }
+.hero .line__in { white-space: nowrap; }
+
+/* 히어로 설명: 링크 → AI → 결과 네 갈래 */
+.explain { margin-top: clamp(28px, 3.4vw, 44px); }
+.tree { display: flex; align-items: center; }
+.node { position: relative; flex: none; }
+.node__label {
+  position: absolute; top: calc(100% + 10px); left: 50%; translate: -50% 0;
+  white-space: nowrap; font-weight: 600; font-size: 0.9375rem; line-height: 1.3;
+}
+.node--first .node__label { left: 0; translate: 0 0; }
+.conn { position: relative; flex: none; width: 56px; height: 0; margin: 0 10px; border-top: 2px dotted #c9cfd6; --dot: 1; }
+.conn::before {
+  content: ""; position: absolute; top: -6px; left: calc(var(--dot) * (100% - 10px));
+  width: 10px; height: 10px; border-radius: 50%; background: var(--accent);
+}
+.branch { flex: none; width: 40px; height: 184px; margin-left: 6px; overflow: visible; fill: none; stroke: #c9cfd6; stroke-width: 2; stroke-dasharray: 1 1; stroke-dashoffset: 0; }
+.outs { display: grid; gap: 8px; margin: 0 0 0 6px; padding: 0; list-style: none; }
+.out { display: flex; align-items: center; gap: 10px; height: 40px; font-weight: 600; font-size: 0.9375rem; line-height: 1.3; }
+.icon {
+  display: grid; place-items: center; flex: none; width: 56px; height: 56px; border-radius: 16px;
+  background: var(--sea); transition: background-color 0.4s, box-shadow 0.4s;
+}
+.icon svg { width: 40px; height: 40px; overflow: visible; fill: none; stroke: var(--ink); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.node.is-on .icon, .out.is-on .icon { background: #fff; box-shadow: 0 0 0 1.5px var(--accent), 0 6px 18px rgba(232, 89, 12, 0.16); }
+.ic-link path { fill: var(--ink); stroke: none; }
+.ic-hl { fill: rgba(232, 89, 12, 0.38); stroke: none; }
+.ic-map { stroke: #9aa3ad; stroke-width: 1.8; }
+.ic-scan { stroke: var(--accent); opacity: 0; }
+.ic-pin path { fill: var(--accent); stroke: #fff; stroke-width: 2; }
+.ic-pin circle { fill: #fff; stroke: none; }
+.ic-arrow, .ic-sum { stroke: var(--accent); }
+.ic-star { fill: var(--accent); stroke: var(--accent); }
+.icon--sm { width: 36px; height: 36px; border-radius: 11px; }
+.icon--sm svg { width: 26px; height: 26px; stroke-width: 2.6; }
 .hero__lede { max-width: 33em; margin-top: clamp(24px, 3vw, 40px); color: var(--muted); font-size: clamp(1.0625rem, 0.95rem + 0.35vw, 1.25rem); line-height: 1.6; }
 .hero__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 28px; margin-top: 32px; }
+.stores { gap: 12px; }
+.store {
+  position: relative; overflow: hidden; isolation: isolate;
+  display: inline-flex; align-items: center; gap: 10px; min-height: 56px; padding: 0 22px 0 18px;
+  border-radius: 14px; background: var(--ink); color: #fff; text-decoration: none;
+  transition: scale 0.2s var(--ease);
+}
+.store::before {
+  content: ""; position: absolute; inset: 0; z-index: -1; background: var(--accent);
+  transform: translateY(101%); transition: transform 0.55s var(--ease);
+}
+.store__icon { width: 24px; height: 24px; fill: currentColor; transition: translate 0.5s var(--ease-pin); }
+.store__text { display: grid; line-height: 1.15; }
+.store__text small { font-size: 0.6875rem; font-weight: 600; opacity: 0.8; }
+.store__text b { font-size: 1.125rem; font-weight: 800; letter-spacing: -0.02em; }
+a.store:hover::before, a.store:focus-visible::before { transform: translateY(0); }
+a.store:hover .store__icon { translate: 0 -2px; }
+a.store:active { scale: 0.97; }
+.store--soon { background: transparent; color: var(--muted); box-shadow: inset 0 0 0 1.5px var(--line); cursor: default; }
+.store--soon::before { display: none; }
 .hero__status { margin-top: 22px; color: var(--muted); font-size: var(--t-small); }
 .hero__status::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 8px; border-radius: 50%; background: var(--accent); translate: 0 -2px; }
 
@@ -162,8 +218,7 @@ html.bar-away .bar { translate: 0 -105%; }
 .film__cap { margin-top: 14px; color: var(--muted); font-size: var(--t-small); line-height: 1.5; }
 
 html.js-motion:not(.intro-done) .line__in { transform: translateY(108%); }
-html.js-motion:not(.intro-done) [data-intro-fade],
-html.js-motion:not(.intro-done) [data-intro-film] { opacity: 0; }
+
 
 /* ---------- how ---------- */
 .h2 { font-weight: 800; font-size: var(--t-h2); line-height: 1.08; letter-spacing: -0.04em; }
@@ -175,7 +230,8 @@ html.js-motion:not(.intro-done) [data-intro-film] { opacity: 0; }
 }
 .how__text { grid-column: 1 / span 5; }
 .how .map { grid-column: 6 / span 7; }
-.how .h2 { margin-bottom: clamp(20px, 3vh, 36px); }
+.how .h2 { margin-bottom: clamp(20px, 3vh, 36px); font-size: clamp(1.625rem, 0.6rem + 2.5vw, 3.4rem); }
+.nowrap { white-space: nowrap; }
 
 .post {
   border: 1px solid var(--line); border-radius: var(--radius); padding: 22px 24px 20px;
@@ -331,6 +387,16 @@ html.js-motion .how .pin:not(.is-found) { opacity: 0; translate: 0 -26px; }
   .hero__copy, .film { grid-column: 1; }
   .film { justify-self: start; max-width: min(78vw, 360px); }
   .film__frame { max-height: none; margin-left: 0; }
+  .tree { flex-wrap: wrap; }
+  .icon { width: 48px; height: 48px; border-radius: 14px; }
+  .icon svg { width: 34px; height: 34px; }
+  .icon--sm { width: 34px; height: 34px; border-radius: 10px; }
+  .icon--sm svg { width: 24px; height: 24px; }
+  .node__label { font-size: 0.8125rem; }
+  .conn { width: 44px; }
+  .branch { display: none; }
+  .outs { flex-basis: 100%; grid-template-columns: 1fr 1fr; gap: 12px 12px; margin: 46px 0 0; }
+  .out { height: auto; align-items: center; font-size: 0.8125rem; }
 
   .how { height: 300svh; }
   .how__stage { grid-template-columns: 1fr; align-content: center; row-gap: 18px; padding-top: calc(var(--bar-h) + 12px); }
