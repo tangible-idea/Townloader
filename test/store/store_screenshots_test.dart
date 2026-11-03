@@ -9,10 +9,14 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
+// ignore: depend_on_referenced_packages
+import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:provider/provider.dart';
+import 'package:townloader/models/saved_link.dart';
 import 'package:townloader/services/links_store.dart';
 import 'package:townloader/state/links_controller.dart';
 import 'package:townloader/data/hiker_client.dart';
+import 'package:townloader/data/maps_client.dart';
 import 'package:townloader/data/ig_repository.dart';
 import 'package:townloader/data/ig_url.dart';
 import 'package:townloader/l10n/strings.dart';
@@ -22,7 +26,10 @@ import 'package:townloader/models/ig_user.dart';
 import 'package:townloader/models/media_source.dart';
 import 'package:townloader/models/threads_thread.dart';
 import 'package:townloader/services/download_service.dart';
+import 'package:townloader/services/image_disk_cache.dart';
+import 'package:townloader/services/social_sign_in.dart';
 import 'package:townloader/services/settings_store.dart';
+import 'package:townloader/state/account_controller.dart';
 import 'package:townloader/state/profile_controller.dart';
 import 'package:townloader/state/resolve_controller.dart';
 import 'package:townloader/state/settings_controller.dart';
@@ -44,10 +51,45 @@ void main() {
   setUpAll(() async {
     if (!enabled) return;
     await _loadFonts();
+    await _primeDiskCache();
   });
 
   for (final copy in _copies) {
-    testWidgets('${copy.locale} 01 스레드를 한 화면에', (tester) async {
+    testWidgets('${copy.locale} 01 글 속 장소 찾기', (tester) async {
+      final env = await _Env.create(tester, copy.appLocale);
+      await env.pump(
+        _StoreFrame(
+          title: copy.places.title,
+          subtitle: copy.places.subtitle,
+          titleSize: copy.titleSize,
+          screen: const RootShell(),
+        ),
+        locale: copy.appLocale,
+      );
+      await _settle(tester);
+
+      await _capture(tester, copy.locale, '01_places.png');
+    }, skip: !enabled);
+
+    testWidgets('${copy.locale} 02 지도', (tester) async {
+      final env = await _Env.create(tester, copy.appLocale);
+      await env.pump(
+        _StoreFrame(
+          title: copy.map.title,
+          subtitle: copy.map.subtitle,
+          titleSize: copy.titleSize,
+          simulatorShot: true,
+          // capture_map.sh 로 시뮬레이터에서 찍은 실제 지도 화면.
+          screen: Image.network(_img('map_${copy.locale}'), fit: BoxFit.cover),
+        ),
+        locale: copy.appLocale,
+      );
+      await _settle(tester);
+
+      await _capture(tester, copy.locale, '02_map.png');
+    }, skip: !enabled);
+
+    testWidgets('${copy.locale} 03 스레드를 한 화면에', (tester) async {
       final env = await _Env.create(tester, copy.appLocale);
       await env.pump(
         _StoreFrame(
@@ -59,6 +101,8 @@ void main() {
         locale: copy.appLocale,
       );
 
+      await tester.tap(find.text(copy.strings.navDownload));
+      await tester.pump();
       final field = find.descendant(
         of: find.byType(RootShell),
         matching: find.byType(TextField),
@@ -70,10 +114,10 @@ void main() {
       await tester.tap(find.byTooltip(copy.strings.fetch));
       await _settle(tester);
 
-      await _capture(tester, copy.locale, '01_thread.png');
+      await _capture(tester, copy.locale, '03_thread.png');
     }, skip: !enabled);
 
-    testWidgets('${copy.locale} 02 링크 하나로 저장', (tester) async {
+    testWidgets('${copy.locale} 04 링크 하나로 저장', (tester) async {
       final env = await _Env.create(tester, copy.appLocale);
       await env.pump(
         _StoreFrame(
@@ -85,6 +129,8 @@ void main() {
         locale: copy.appLocale,
       );
 
+      await tester.tap(find.text(copy.strings.navDownload));
+      await tester.pump();
       final field = find.descendant(
         of: find.byType(RootShell),
         matching: find.byType(TextField),
@@ -93,10 +139,10 @@ void main() {
       await tester.tap(find.byTooltip(copy.strings.fetch));
       await _settle(tester);
 
-      await _capture(tester, copy.locale, '02_link.png');
+      await _capture(tester, copy.locale, '04_link.png');
     }, skip: !enabled);
 
-    testWidgets('${copy.locale} 03 프로필 통째로 둘러보기', (tester) async {
+    testWidgets('${copy.locale} 05 프로필 통째로 둘러보기', (tester) async {
       final env = await _Env.create(tester, copy.appLocale);
       await env.pump(
         _StoreFrame(
@@ -119,7 +165,7 @@ void main() {
       FocusManager.instance.primaryFocus?.unfocus();
       await _settle(tester);
 
-      await _capture(tester, copy.locale, '03_profile.png');
+      await _capture(tester, copy.locale, '05_profile.png');
     }, skip: !enabled);
 
     testWidgets('${copy.locale} 제품 페이지 헤더', (tester) async {
@@ -172,6 +218,8 @@ class _Copy {
   const _Copy({
     required this.locale,
     required this.titleSize,
+    required this.places,
+    required this.map,
     required this.thread,
     required this.link,
     required this.profile,
@@ -185,6 +233,8 @@ class _Copy {
   Locale get appLocale => Locale(locale.split('-').first);
   S get strings => S(appLocale.languageCode != 'en');
   final double titleSize;
+  final ({String title, String subtitle}) places;
+  final ({String title, String subtitle}) map;
   final ({String title, String subtitle}) thread;
   final ({String title, String subtitle}) link;
   final ({String title, String subtitle}) profile;
@@ -195,8 +245,10 @@ const _copies = [
   _Copy(
     locale: 'ko',
     titleSize: 38,
+    places: (title: '링크를 붙여넣으면\n장소를 찾아 줘요', subtitle: '캡션과 사진 속 글자까지 읽어 모아요'),
+    map: (title: '저장한 장소를\n지도 한 장에', subtitle: '카테고리별로 보고, 링크로 공유해요'),
     thread: (title: '나뉜 스레드도\n한 화면에서 끝까지', subtitle: '이어지는 글과 댓글을 순서대로 모아 읽어요'),
-    link: (title: '링크 하나로\n바로 열어 보기', subtitle: '사진과 영상을 크게 보고, 원하는 것만 보관해요'),
+    link: (title: '원본 화질로\n원하는 것만 보관', subtitle: '사진과 영상을 크게 보고, 원하는 것만 보관해요'),
     profile: (
       title: '계정을 통째로 보고\n원하는 것만 골라서',
       subtitle: '게시물·릴스·스토리를 한눈에 둘러봐요',
@@ -206,12 +258,20 @@ const _copies = [
   _Copy(
     locale: 'en-US',
     titleSize: 34,
+    places: (
+      title: 'Paste a link.\nGet the places.',
+      subtitle: 'Reads captions and the text in photos',
+    ),
+    map: (
+      title: 'All your spots.\nOne map.',
+      subtitle: 'View by category and share with a link',
+    ),
     thread: (
       title: 'Whole threads.\nOne screen.',
       subtitle: 'Read multi-part posts in order, with replies',
     ),
     link: (
-      title: 'Paste a link.\nSee it all.',
+      title: 'Original quality.\nKeep what you want.',
       subtitle: 'View photos and videos, keep only what you want',
     ),
     profile: (
@@ -224,6 +284,52 @@ const _copies = [
     ),
   ),
 ];
+
+/// 링크 탭에 미리 저장해 둔 예시 글. 글 내용은 지어낸 것이다.
+LinksData _savedLinks(Locale locale) {
+  final isKo = locale.languageCode == 'ko';
+  final category = isKo ? '제주 여행' : 'Jeju trip';
+  SavedPlace place(String ko, String en, double lat, double lng) => SavedPlace(
+    name: isKo ? ko : en,
+    lat: lat,
+    lng: lng,
+    source: PlaceSource.tag,
+  );
+  SavedLink link(
+    String code,
+    String ko,
+    String en,
+    String cover,
+    List<SavedPlace> places,
+  ) => SavedLink(
+    code: code,
+    url: 'https://www.instagram.com/p/$code/',
+    category: category,
+    savedAt: DateTime(2026, 10, 1),
+    status: LinkStatus.ready,
+    title: isKo ? ko : en,
+    author: _user.username,
+    coverUrl: _img(cover),
+    imageUrls: [_img(cover)],
+    places: places,
+  );
+  return LinksData(
+    categories: [category, isKo ? '맛집' : 'Food'],
+    links: [
+      link('Jeju1', '제주 동쪽 하루 코스', 'A day in east Jeju', 'p1018', [
+        place('성산일출봉', 'Seongsan Ilchulbong', 33.4580, 126.9425),
+        place('우도', 'Udo Island', 33.5060, 126.9530),
+      ]),
+      link('Jeju2', '제주 서쪽 바다 산책', 'West coast walks', 'p1043', [
+        place('협재해수욕장', 'Hyeopjae Beach', 33.3940, 126.2396),
+      ]),
+      link('Jeju3', '한라산과 폭포', 'Hallasan and waterfalls', 'p1039', [
+        place('한라산', 'Hallasan', 33.3617, 126.5292),
+        place('천지연폭포', 'Cheonjiyeon Falls', 33.2450, 126.5540),
+      ]),
+    ],
+  );
+}
 
 // ── 캔버스 ────────────────────────────────────────────────────────────────────
 
@@ -254,7 +360,16 @@ class _Env {
     tester.platformDispatcher.localeTestValue = locale;
     addTearDown(tester.platformDispatcher.clearLocaleTestValue);
 
+    // 앞 테스트에서 불러오다 멈춘 사진이 캐시에 남으면 다음 장면에서도 끝나지 않는다.
+    PaintingBinding.instance.imageCache
+      ..clear()
+      ..clearLiveImages();
     await _primeImages(tester);
+    // 위젯 테스트에는 딥링크 플러그인이 없다.
+    tester.binding.defaultBinaryMessenger.setMockStreamHandler(
+      const EventChannel('com.llfbandit.app_links/events'),
+      MockStreamHandler.inline(onListen: (_, _) {}),
+    );
     final store = _MemoryStore();
     return _Env._(
       tester,
@@ -266,6 +381,12 @@ class _Env {
   Future<void> pump(Widget frame, {required Locale locale}) async {
     final settings = _StoreSettings(_MemoryStore());
     await settings.load();
+    final links = LinksController(
+      store: MemoryLinksStore(_savedLinks(locale)),
+      resolve: repository.resolve,
+      analyze: (post, {required isKo}) async => const [],
+    );
+    await links.load(isKo: locale.languageCode == 'ko');
 
     await tester.pumpWidget(
       MultiProvider(
@@ -274,14 +395,16 @@ class _Env {
           ChangeNotifierProvider.value(value: downloads),
           ChangeNotifierProvider(create: (_) => ResolveController(repository)),
           ChangeNotifierProvider(create: (_) => ProfileController(repository)),
-          ChangeNotifierProvider(
-            create:
-                (_) => LinksController(
-                  store: MemoryLinksStore(),
-                  resolve: repository.resolve,
-                  analyze: (post, {required isKo}) async => const [],
-                )..load(isKo: true),
+          ChangeNotifierProvider.value(value: links),
+          ChangeNotifierProvider.value(
+            value: AccountController(
+              client: MapsClient(),
+              links: links,
+              readSession: () async => null,
+              writeSession: (_) async => true,
+            ),
           ),
+          Provider.value(value: SocialSignIn()),
         ],
         child: MaterialApp(
           debugShowCheckedModeBanner: false,
@@ -310,6 +433,10 @@ class _Env {
 Future<void> _settle(WidgetTester tester) async {
   for (var i = 0; i < 20; i++) {
     await tester.pump(const Duration(milliseconds: 100));
+    // 사진 파일을 읽고 디코딩하는 일은 실제 시간이 흘러야 끝난다.
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 300)),
+    );
   }
 }
 
@@ -340,12 +467,16 @@ class _StoreFrame extends StatelessWidget {
     required this.subtitle,
     required this.screen,
     this.titleSize = 38,
+    this.simulatorShot = false,
   });
 
   final String title;
   final double titleSize;
   final String subtitle;
   final Widget screen;
+
+  /// 시뮬레이터에서 찍은 화면이라 상태 표시줄이 이미 들어 있다.
+  final bool simulatorShot;
 
   @override
   Widget build(BuildContext context) {
@@ -393,7 +524,12 @@ class _StoreFrame extends StatelessWidget {
               children: [
                 Padding(
                   padding: const EdgeInsets.only(bottom: 40),
-                  child: FittedBox(child: _PhoneMockup(screen: screen)),
+                  child: FittedBox(
+                    child: _PhoneMockup(
+                      screen: screen,
+                      showStatusBar: !simulatorShot,
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -405,9 +541,10 @@ class _StoreFrame extends StatelessWidget {
 }
 
 class _PhoneMockup extends StatelessWidget {
-  const _PhoneMockup({required this.screen});
+  const _PhoneMockup({required this.screen, this.showStatusBar = true});
 
   final Widget screen;
+  final bool showStatusBar;
 
   static const _bezel = 13.0;
 
@@ -436,13 +573,14 @@ class _PhoneMockup extends StatelessWidget {
           child: Stack(
             children: [
               Positioned.fill(child: MediaQuery(data: media, child: screen)),
-              const Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                height: 54,
-                child: _StatusBar(),
-              ),
+              if (showStatusBar)
+                const Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  height: 54,
+                  child: _StatusBar(),
+                ),
               Positioned(
                 top: 11,
                 left: (_screen.width - 124) / 2,
@@ -505,6 +643,9 @@ Future<void> _primeImages(WidgetTester tester) async {
     for (final entity in Directory(_imageDir).listSync())
       if (entity is File && entity.path.endsWith('.jpg'))
         entity.uri.pathSegments.last.replaceAll('.jpg', ''): entity.path,
+    for (final locale in ['ko', 'en-US'])
+      if (File('store/app_store/screenshots/raw/map_$locale.png').existsSync())
+        'map_$locale': 'store/app_store/screenshots/raw/map_$locale.png',
     'icon':
         'ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-1024x1024@1x.png',
   };
@@ -522,6 +663,39 @@ Future<void> _primeImages(WidgetTester tester) async {
       );
     }
   });
+}
+
+/// 앱의 사진은 [DiskCachedImage] 로 그려지므로, 받아 둔 파일이 있는 것처럼 캐시 폴더를 채운다.
+Future<void> _primeDiskCache() async {
+  final base = await Directory.systemTemp.createTemp('store_shots');
+  PathProviderPlatform.instance = _TempPathProvider(base.path);
+  final dir = await Directory('${base.path}/images').create();
+  for (final entity in Directory(_imageDir).listSync()) {
+    if (entity is! File || !entity.path.endsWith('.jpg')) continue;
+    final name = entity.uri.pathSegments.last.replaceAll('.jpg', '');
+    await entity.copy('${dir.path}/${_diskCacheName(_img(name))}');
+  }
+  // 캐시 폴더 열기를 실제 시간에서 끝내 둔다. 테스트의 가짜 시간 안에서 시작했다가
+  // 끝나지 못하면 뒤 장면의 사진까지 전부 멈춘다.
+  await ImageDiskCache.instance.fileFor(_img('avatar'));
+}
+
+/// `ImageDiskCache._hash` 와 같은 FNV-1a 이름.
+String _diskCacheName(String url) {
+  var hash = 0xcbf29ce484222325;
+  for (final unit in url.codeUnits) {
+    hash = ((hash ^ unit) * 0x100000001b3) & 0x7fffffffffffffff;
+  }
+  return '${hash.toRadixString(16)}_${url.length}';
+}
+
+class _TempPathProvider extends PathProviderPlatform {
+  _TempPathProvider(this.path);
+
+  final String path;
+
+  @override
+  Future<String?> getApplicationCachePath() async => path;
 }
 
 Future<void> _loadFonts() async {

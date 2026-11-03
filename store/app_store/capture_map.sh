@@ -11,7 +11,9 @@ xcrun simctl status_bar $SIM override --time 9:41 --batteryState charged --batte
 python3 -m http.server 8765 --bind 127.0.0.1 -d test/store/images >/dev/null 2>&1 &
 SERVER=$!
 trap "kill $SERVER 2>/dev/null" EXIT
-for locale in ${@:-ko en-US}; do
+locales=("$@")
+(( $#locales )) || locales=(ko en-US)
+for locale in $locales; do
   : > $LOG
   flutter test integration_test/store_map_shot_test.dart -d $SIM \
     --dart-define-from-file=.env.json --dart-define=STORE_LOCALE=${locale%%-*} > $LOG 2>&1 &

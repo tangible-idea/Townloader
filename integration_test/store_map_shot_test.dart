@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
+import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 import 'package:provider/provider.dart';
+import 'package:townloader/config/app_config.dart';
 import 'package:townloader/models/saved_link.dart';
 import 'package:townloader/services/links_store.dart';
 import 'package:townloader/state/links_controller.dart';
@@ -19,6 +21,7 @@ void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets('지도 화면을 띄워 둔다', (tester) async {
+    MapboxOptions.setAccessToken(AppConfig.mapboxToken);
     final isKo = _locale == 'ko';
     final category = isKo ? '제주 여행' : 'Jeju trip';
     SavedPlace place(String ko, String en, double lat, double lng, String image) =>
