@@ -1,27 +1,41 @@
-Long threads, photos and videos, all on one screen.
+Save posts, find their places, and read long threads, all in one app.
 
-Townloader lets you read public Threads and Instagram posts in a clean view and keep only the ones you want. Paste a link, or pick Townloader from the share button in the app you're browsing.
+Townloader turns public Instagram and Threads posts into something you can use later. Save a post about a trip or a restaurant and its places land on your map. Read a long thread from start to finish. Keep the photos and videos you want.
+
+■ Find the places in a post
+Paste public Instagram post links into the Links tab. Townloader reads the caption and the text in the post's photos, finds the places mentioned, and gives each post a short title.
+
+■ See them on a map
+Open a category or a single post on the map. Drag posts between categories, remove places you don't need, and undo if you change your mind.
+
+■ Organize with categories
+Create categories like "Tokyo trip". New posts are sorted into a matching category automatically, and you can move them at any time.
+
+■ Share a map with a link (optional)
+Sign in and share a category or post map as a link. Friends can open it in the app or a browser. Sharing makes that map public to anyone with the link, and you can stop sharing at any time.
 
 ■ Whole threads, start to finish
-Threads posts split into many parts (1/17, 2/17 ...) are laid out on one screen in the order the author wrote them. You can see the public replies too.
+Threads posts split into many parts (1/17, 2/17 ...) are laid out on one screen in the order the author wrote them, with the public replies.
+
+■ AI summaries (optional)
+After you agree in the app, get a short summary of a thread or its replies, and rate it with a thumbs up or down. You can also have replies read aloud.
 
 ■ Watch right there
-Tap a video to play it in place. Long-press a post to preview its photos and videos full size.
+Tap a video to play it in place. Long-press a post to preview its photos and videos.
 
-■ Keep only what you want
-Select the parts of a thread you want to keep and save their photos and videos, or save everything at once.
-
-■ Original quality
-Photos are saved at the largest resolution and videos at the highest quality. To save space, choose "Smallest size" in Settings.
+■ Keep what you want in original quality
+Select the parts you want or save everything at once, at the highest quality or the smallest size. Files go to the "Townloader" album in Photos, or to the Files app.
 
 ■ Open from the share button
-Tap Share → Townloader in the app you're using, and the post opens in Townloader. You choose what to keep. Tap "Open original" to go back to the original post at any time.
+Tap Share → Townloader in the app you're using, and the post opens in Townloader. Nothing is saved until you choose.
 
 ■ Browse public accounts
-See a public Instagram account's posts, reels and stories as a list, and save only the ones you want.
+See a public Instagram account's posts, reels and stories, and save only the ones you want.
 
-■ Neatly organized in Photos or Files
-Saved files go to the "Townloader" album in Photos, or to the Files app if you choose so in Settings. Share a file or open where it was saved straight from the Downloads list.
+■ Account is optional
+You can use Townloader without an account. Sign in with Apple or Google to back up your saved links and places across devices and share maps. You can delete your account in Settings at any time.
+
+Also includes dark mode, and Korean and English.
 
 Supported links
 • Public Threads posts and threads

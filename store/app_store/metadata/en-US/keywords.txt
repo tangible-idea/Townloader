@@ -1,1 +1,1 @@
-reader,thread,viewer,archive,save,photo,video,original,quality,backup,gallery,offline,hd
+places,map,travel,food,thread,reader,archive,save,photo,video,summary,saved,share,hd

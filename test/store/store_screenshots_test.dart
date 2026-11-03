@@ -137,6 +137,31 @@ void main() {
         folder: 'store/app_store/header',
       );
     }, skip: !enabled);
+
+    testWidgets('${copy.locale} 검색 결과 이미지', (tester) async {
+      final env = await _Env.create(tester, copy.appLocale);
+      tester.view.physicalSize = _searchCanvas * _headerPixelRatio;
+      tester.view.devicePixelRatio = _headerPixelRatio;
+      await env.pump(
+        _HeaderFrame(
+          copy: copy.header,
+          textWidth: 900,
+          gap: 60,
+          cardWidth: 760,
+          titleSize: 108,
+        ),
+        locale: copy.appLocale,
+      );
+      await _settle(tester);
+
+      await _capture(
+        tester,
+        copy.locale,
+        'search_results.png',
+        pixelRatio: _headerPixelRatio,
+        folder: 'store/app_store/header',
+      );
+    }, skip: !enabled);
   }
 }
 
@@ -176,10 +201,7 @@ const _copies = [
       title: '계정을 통째로 보고\n원하는 것만 골라서',
       subtitle: '게시물·릴스·스토리를 한눈에 둘러봐요',
     ),
-    header: (
-      title: '긴 글도, 사진도, 영상도\n한 화면에서',
-      subtitle: '읽고, 고르고, 원본 그대로 보관하세요',
-    ),
+    header: (title: '글 속 장소를\n지도에 모아요', subtitle: '긴 글 읽기부터 사진·영상 보관까지 한 앱에서'),
   ),
   _Copy(
     locale: 'en-US',
@@ -197,8 +219,8 @@ const _copies = [
       subtitle: 'See posts, reels and stories at a glance',
     ),
     header: (
-      title: 'Posts, photos, videos.\nAll on one screen.',
-      subtitle: 'Read, pick, and keep them in original quality',
+      title: 'Save a post.\nMap its places.',
+      subtitle: 'Read long threads. Keep photos and videos.',
     ),
   ),
 ];
@@ -253,11 +275,12 @@ class _Env {
           ChangeNotifierProvider(create: (_) => ResolveController(repository)),
           ChangeNotifierProvider(create: (_) => ProfileController(repository)),
           ChangeNotifierProvider(
-            create: (_) => LinksController(
-              store: MemoryLinksStore(),
-              resolve: repository.resolve,
-              analyze: (post, {required isKo}) async => const [],
-            )..load(isKo: true),
+            create:
+                (_) => LinksController(
+                  store: MemoryLinksStore(),
+                  resolve: repository.resolve,
+                  analyze: (post, {required isKo}) async => const [],
+                )..load(isKo: true),
           ),
         ],
         child: MaterialApp(
@@ -412,9 +435,7 @@ class _PhoneMockup extends StatelessWidget {
           size: _screen,
           child: Stack(
             children: [
-              Positioned.fill(
-                child: MediaQuery(data: media, child: screen),
-              ),
+              Positioned.fill(child: MediaQuery(data: media, child: screen)),
               const Positioned(
                 top: 0,
                 left: 0,
@@ -673,9 +694,10 @@ IgPost get _carousel => IgPost(
   code: 'DchLnq8E21N',
   kind: PostKind.carousel,
   user: _user,
-  caption: S.current.isKo
-      ? '돌로미티 트레킹 3일차. 구름이 걷히는 순간을 다섯 장에 담았어요.'
-      : 'Day 3 in the Dolomites. Five frames of the clouds breaking.',
+  caption:
+      S.current.isKo
+          ? '돌로미티 트레킹 3일차. 구름이 걷히는 순간을 다섯 장에 담았어요.'
+          : 'Day 3 in the Dolomites. Five frames of the clouds breaking.',
   takenAt: DateTime(2026, 9, 14),
   likeCount: 48200,
   commentCount: 612,
@@ -689,10 +711,11 @@ IgPost get _carousel => IgPost(
 );
 
 final _gridPosts = <IgPost>[
-  for (final (index, name) in [
-    'p1015', 'p1040', 'p1069', 'p1074', 'p1084', 'p110', //
-    'p1062', 'p1057', 'p1050', 'p1047', 'p1039', 'p1080',
-  ].indexed)
+  for (final (index, name)
+      in [
+        'p1015', 'p1040', 'p1069', 'p1074', 'p1084', 'p110', //
+        'p1062', 'p1057', 'p1050', 'p1047', 'p1039', 'p1080',
+      ].indexed)
     IgPost(
       pk: '39750000000000000$index',
       code: 'DcGrid$index',
@@ -729,11 +752,12 @@ IgPost _threadPost(
   pk: '39800000000000000$index',
   code: 'DdTrek000$index',
   source: MediaSource.threads,
-  kind: items.length > 1
-      ? PostKind.carousel
-      : items.any((item) => item.kind == AssetKind.video)
-      ? PostKind.video
-      : PostKind.photo,
+  kind:
+      items.length > 1
+          ? PostKind.carousel
+          : items.any((item) => item.kind == AssetKind.video)
+          ? PostKind.video
+          : PostKind.photo,
   user: user,
   caption: caption,
   takenAt: DateTime(2026, 9, 21),
@@ -810,14 +834,27 @@ ThreadsThread get _thread {
 /// App Store 제품 페이지 맨 위 헤더(5244×2950). 논리 크기 2622×1475 를 2배로 찍는다.
 ///
 /// Apple 가이드상 다른 플랫폼의 이름·로고·화면은 넣을 수 없어서, 앱 화면 대신
-/// 스레드 목록을 단순화한 카드만 그린다. 기기마다 위아래가 잘리므로 내용은 가운데에 모은다.
+/// 지도를 단순화한 카드만 그린다. 기기마다 위아래가 잘리므로 내용은 가운데에 모은다.
 const _headerCanvas = Size(2622, 1475);
+
+/// 검색 결과 이미지(3840×2560). 작게 보이므로 글자를 키운다.
+const _searchCanvas = Size(1920, 1280);
 const _headerPixelRatio = 2.0;
 
 class _HeaderFrame extends StatelessWidget {
-  const _HeaderFrame({required this.copy});
+  const _HeaderFrame({
+    required this.copy,
+    this.textWidth = 1060,
+    this.gap = 120,
+    this.cardWidth = 820,
+    this.titleSize = 96,
+  });
 
   final ({String title, String subtitle}) copy;
+  final double textWidth;
+  final double gap;
+  final double cardWidth;
+  final double titleSize;
 
   @override
   Widget build(BuildContext context) {
@@ -834,7 +871,7 @@ class _HeaderFrame extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             SizedBox(
-              width: 1060,
+              width: textWidth,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -864,9 +901,9 @@ class _HeaderFrame extends StatelessWidget {
                   const SizedBox(height: 64),
                   Text(
                     copy.title,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontFamily: _korean,
-                      fontSize: 96,
+                      fontSize: titleSize,
                       fontWeight: FontWeight.w800,
                       height: 1.22,
                       letterSpacing: -2.5,
@@ -887,8 +924,11 @@ class _HeaderFrame extends StatelessWidget {
                 ],
               ),
             ),
-            const SizedBox(width: 120),
-            const _HeaderThreadCard(),
+            SizedBox(width: gap),
+            SizedBox(
+              width: cardWidth,
+              child: const FittedBox(child: _HeaderMapCard()),
+            ),
           ],
         ),
       ),
@@ -896,109 +936,77 @@ class _HeaderFrame extends StatelessWidget {
   }
 }
 
-/// 스레드 목록을 닮은 카드. 글자는 회색 막대로만 그려 특정 서비스로 읽히지 않게 한다.
-class _HeaderThreadCard extends StatelessWidget {
-  const _HeaderThreadCard();
+/// 지도를 닮은 카드. 실제 지도·글자 대신 도형과 회색 막대만 그려 특정 서비스로 읽히지 않게 한다.
+class _HeaderMapCard extends StatelessWidget {
+  const _HeaderMapCard();
 
-  static const _rows = [
-    (lines: [1.0, 0.72], thumb: 'p1018', checked: true, video: false),
-    (lines: [0.94, 0.58], thumb: 'p1043', checked: true, video: false),
-    (lines: [0.86, 0.66], thumb: null, checked: false, video: false),
-    (lines: [0.78, 0.0], thumb: 'p1044', checked: true, video: true),
-    (lines: [0.9, 0.62], thumb: 'p1039', checked: true, video: false),
-  ];
+  static const _size = Size(820, 960);
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 820,
-      padding: const EdgeInsets.fromLTRB(44, 40, 44, 24),
+      width: _size.width,
+      height: _size.height,
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: Palette.white,
         borderRadius: BorderRadius.circular(48),
         // 테스트 렌더러는 그림자를 흐리게 그리지 못해 테두리로 띄운다.
         border: Border.all(color: Palette.grey300, width: 2),
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
+      child: Stack(
         children: [
-          Row(
-            children: [
-              ClipOval(
-                child: Image.network(_img('avatar'), width: 72, height: 72),
-              ),
-              const SizedBox(width: 24),
-              _bar(260, 26, Palette.grey800),
-              const Spacer(),
-              _bar(120, 22, Palette.grey300),
-            ],
-          ),
-          const SizedBox(height: 20),
-          for (final (index, row) in _rows.indexed) ...[
-            if (index > 0)
-              const Divider(height: 2, thickness: 2, color: Palette.grey200),
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 24),
-              child: Row(
-                children: [
-                  Icon(
-                    row.checked
-                        ? Icons.check_box
-                        : Icons.check_box_outline_blank,
-                    size: 56,
-                    color: row.checked ? Palette.grey900 : Palette.grey300,
-                  ),
-                  const SizedBox(width: 32),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        for (final (i, width) in row.lines.indexed)
-                          if (width > 0)
-                            Padding(
-                              padding: EdgeInsets.only(top: i == 0 ? 0 : 18),
-                              child: FractionallySizedBox(
-                                widthFactor: width,
-                                child: _bar(null, 22, Palette.grey300),
-                              ),
-                            ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 32),
-                  if (row.thumb case final thumb?)
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(20),
-                      child: Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          Image.network(
-                            _img(thumb),
-                            width: 128,
-                            height: 128,
-                            fit: BoxFit.cover,
-                          ),
-                          if (row.video)
-                            const Icon(
-                              Icons.play_circle_fill,
-                              size: 52,
-                              color: Palette.white,
-                            ),
-                        ],
-                      ),
-                    )
-                  else
-                    const SizedBox(width: 128, height: 64),
-                ],
-              ),
-            ),
-          ],
+          const Positioned.fill(child: CustomPaint(painter: _MapPainter())),
+          const _MapPin(left: 96, top: 150, photo: 'p1018', size: 150),
+          const _MapPin(left: 520, top: 90, photo: 'p1043', size: 130),
+          const _MapPin(left: 400, top: 320, photo: 'p1039', size: 170),
+          const _MapPin(left: 610, top: 400, photo: 'p1044', size: 120),
+          Positioned(left: 28, right: 28, bottom: 28, child: _postRow()),
         ],
       ),
     );
   }
 
-  static Widget _bar(double? width, double height, Color color) => Container(
+  static Widget _postRow() => Container(
+    padding: const EdgeInsets.all(24),
+    decoration: BoxDecoration(
+      color: Palette.white,
+      borderRadius: BorderRadius.circular(32),
+      border: Border.all(color: Palette.grey200, width: 2),
+    ),
+    child: Row(
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(20),
+          child: Image.network(
+            _img('p1039'),
+            width: 128,
+            height: 128,
+            fit: BoxFit.cover,
+          ),
+        ),
+        const SizedBox(width: 32),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _bar(320, 28, Palette.grey800),
+              const SizedBox(height: 22),
+              Row(
+                children: [
+                  const Icon(Icons.place, size: 40, color: _pinColor),
+                  const SizedBox(width: 10),
+                  _bar(210, 22, Palette.grey300),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
+
+  static Widget _bar(double width, double height, Color color) => Container(
     width: width,
     height: height,
     decoration: BoxDecoration(
@@ -1006,4 +1014,131 @@ class _HeaderThreadCard extends StatelessWidget {
       borderRadius: BorderRadius.circular(height / 2),
     ),
   );
+}
+
+/// 앱 아이콘 그라데이션에서 가져온 핀 색.
+const _pinColor = Color(0xFFD9486F);
+
+/// 사진을 담은 말풍선 핀. 꼬리 끝이 그 장소다.
+class _MapPin extends StatelessWidget {
+  const _MapPin({
+    required this.left,
+    required this.top,
+    required this.photo,
+    required this.size,
+  });
+
+  final double left;
+  final double top;
+  final String photo;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final tail = size * 0.2;
+    return Positioned(
+      left: left,
+      top: top,
+      child: SizedBox(
+        width: size,
+        height: size + tail,
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: CustomPaint(painter: _PinTailPainter(tail: tail)),
+            ),
+            Positioned(
+              left: 0,
+              top: 0,
+              child: Container(
+                width: size,
+                height: size,
+                padding: const EdgeInsets.all(8),
+                decoration: const BoxDecoration(
+                  color: _pinColor,
+                  shape: BoxShape.circle,
+                ),
+                child: ClipOval(
+                  child: Image.network(_img(photo), fit: BoxFit.cover),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PinTailPainter extends CustomPainter {
+  const _PinTailPainter({required this.tail});
+
+  final double tail;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final x = size.width / 2;
+    final path =
+        Path()
+          ..moveTo(x - tail * 0.8, size.height - tail * 1.4)
+          ..lineTo(x + tail * 0.8, size.height - tail * 1.4)
+          ..lineTo(x, size.height)
+          ..close();
+    canvas.drawPath(path, Paint()..color = _pinColor);
+  }
+
+  @override
+  bool shouldRepaint(_PinTailPainter old) => old.tail != tail;
+}
+
+/// 물, 공원, 길만 있는 가상의 지도.
+class _MapPainter extends CustomPainter {
+  const _MapPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawRect(
+      Offset.zero & size,
+      Paint()..color = const Color(0xFFF3F2EE),
+    );
+
+    final water =
+        Path()
+          ..moveTo(size.width, 500)
+          ..cubicTo(690, 560, 660, 700, 540, 760)
+          ..cubicTo(440, 810, 380, 900, 360, size.height)
+          ..lineTo(size.width, size.height)
+          ..close();
+    canvas.drawPath(water, Paint()..color = const Color(0xFFD6E6F2));
+
+    final park = RRect.fromRectAndRadius(
+      const Rect.fromLTWH(60, 500, 270, 190),
+      const Radius.circular(40),
+    );
+    canvas.drawRRect(park, Paint()..color = const Color(0xFFDDEBD6));
+
+    final road =
+        Paint()
+          ..color = Palette.white
+          ..style = PaintingStyle.stroke
+          ..strokeCap = StrokeCap.round;
+    void line(double width, List<Offset> points) {
+      road.strokeWidth = width;
+      final path = Path()..moveTo(points.first.dx, points.first.dy);
+      for (final p in points.skip(1)) {
+        path.lineTo(p.dx, p.dy);
+      }
+      canvas.drawPath(path, road);
+    }
+
+    line(26, const [Offset(-20, 420), Offset(360, 470), Offset(860, 300)]);
+    line(26, const [Offset(350, -20), Offset(360, 470), Offset(250, 1000)]);
+    line(14, const [Offset(-20, 120), Offset(360, 90), Offset(860, 150)]);
+    line(14, const [Offset(600, -20), Offset(640, 370), Offset(560, 600)]);
+    line(14, const [Offset(-20, 730), Offset(310, 760)]);
+    line(14, const [Offset(180, 90), Offset(170, 440)]);
+  }
+
+  @override
+  bool shouldRepaint(_MapPainter oldDelegate) => false;
 }
